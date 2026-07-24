@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Jugador {
+  id        Int      @id @default(autoincrement())
+  nombre    String
+  numero    Int
+  posicion  String?
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  partidosJugados   MatchJugador[]
+  statsObjetivas    StatsObjetivas[]
+  evaluacionesJuez  EvaluacionJuez[]
+}
+
+model Partido {
+  id          Int      @id @default(autoincrement())
+  rival       String
+  fecha       DateTime
+  cancha      String?
+  estado      String   @default("pendiente")
+  tokenAcceso String   @unique @default(uuid())
+  createdAt   DateTime @default(now())
+
+  jugadoresEnCancha  MatchJugador[]
+  statsObjetivas     StatsObjetivas[]
+  evaluacionesJuez   EvaluacionJuez[]
+}
+
+model MatchJugador {
+  id          Int     @id @default(autoincrement())
+  partidoId   Int
+  jugadorId   Int
+  enCancha    Boolean @default(true)
+  esSuplente  Boolean @default(false)
+
+  partido Partido @relation(fields: [partidoId], references: [id], onDelete: Cascade)
+  jugador Jugador @relation(fields: [jugadorId], references: [id], onDelete: Cascade)
+
+  @@unique([partidoId, jugadorId])
+}
+
+model StatsObjetivas {
+  id              Int @id @default(autoincrement())
+  partidoId       Int
+  jugadorId       Int
+  goles           Int @default(0)
+  asistencias     Int @default(0)
+  recuperaciones  Int @default(0)
+  tirosAPorteria  Int @default(0)
+  faltas          Int @default(0)
+  balonesPerdidos Int @default(0)
+  tirosAfuera     Int @default(0)
+
+  partido Partido @relation(fields: [partidoId], references: [id], onDelete: Cascade)
+  jugador Jugador @relation(fields: [jugadorId], references: [id], onDelete: Cascade)
+
+  @@unique([partidoId, jugadorId])
+}
+
+model EvaluacionJuez {
+  id          Int     @id @default(autoincrement())
+  partidoId   Int
+  jugadorId   Int
+  juezToken   String
+  puntuacion  Int
+  completado  Boolean @default(false)
+
+  partido Partido @relation(fields: [partidoId], references: [id], onDelete: Cascade)
+  jugador Jugador @relation(fields: [jugadorId], references: [id], onDelete: Cascade)
+
+  @@unique([partidoId, jugadorId, juezToken])
+}
