@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Navbar from '@/components/Navbar'
+import PincodeModal from '@/components/PincodeModal'
 
 interface Jugador {
   id: number
@@ -18,18 +19,48 @@ interface Partido {
   estado: string
   cancha: string | null
   tokenAcceso: string
-  jugadoresEnCancha: { jugador: Jugador; enCancha: boolean }[]
+  jugadoresEnCancha: { jugador: Jugador; enCancha: boolean; esSuplente: boolean }[]
 }
 
 export default function PartidoAdminPage() {
   const params = useParams()
   const [partido, setPartido] = useState<Partido | null>(null)
+  const [plantelAbierto, setPlantelAbierto] = useState(false)
+  const [todosJugadores, setTodosJugadores] = useState<Jugador[]>([])
+  const [confirmarEstado, setConfirmarEstado] = useState<'en_curso' | 'finalizado' | null>(null)
 
   useEffect(() => {
     fetch(`/api/partidos/${params.id}`)
       .then(res => res.json())
       .then(setPartido)
   }, [params.id])
+
+  const cargarPartido = async () => {
+    const res = await fetch(`/api/partidos/${params.id}`)
+    const data = await res.json()
+    setPartido(data)
+  }
+
+  const abrirPlantel = async () => {
+    setPlantelAbierto(true)
+    const res = await fetch('/api/jugadores')
+    const data = await res.json()
+    setTodosJugadores(data)
+  }
+
+  const cambiarPlantel = async (action: 'agregar' | 'quitar', jugadorId: number) => {
+    if (action === 'quitar' && !confirm('¿Quitar a este jugador del partido? Se eliminarán sus estadísticas de este partido.')) {
+      return
+    }
+
+    await fetch(`/api/partidos/${params.id}/plantel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, jugadorId })
+    })
+
+    await cargarPartido()
+  }
 
   const cambiarEstado = async (nuevoEstado: string) => {
     await fetch(`/api/partidos/${params.id}`, {
@@ -86,7 +117,7 @@ export default function PartidoAdminPage() {
           <div className="grid grid-cols-2 gap-2">
             {partido.estado === 'pendiente' && (
               <button
-                onClick={() => cambiarEstado('en_curso')}
+                onClick={() => setConfirmarEstado('en_curso')}
                 className="bg-green-600 hover:bg-green-500 text-white font-semibold py-3 rounded-lg transition-colors"
               >
                 Iniciar Partido
@@ -94,13 +125,25 @@ export default function PartidoAdminPage() {
             )}
             {partido.estado === 'en_curso' && (
               <button
-                onClick={() => cambiarEstado('finalizado')}
+                onClick={() => setConfirmarEstado('finalizado')}
                 className="bg-red-600 hover:bg-red-500 text-white font-semibold py-3 rounded-lg transition-colors"
               >
                 Finalizar
               </button>
             )}
           </div>
+
+          <button
+            onClick={abrirPlantel}
+            disabled={partido.estado !== 'pendiente'}
+            className={`w-full font-semibold py-3 rounded-lg transition-colors ${
+              partido.estado === 'pendiente'
+                ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            👥 Ajustar Plantel
+          </button>
         </div>
 
         {/* Sesiones de Evaluación */}
@@ -114,10 +157,25 @@ export default function PartidoAdminPage() {
               const juezId = crypto.randomUUID()
               window.open(`/evaluacion/${partido.id}/${juezId}`, '_blank')
             }}
-            className="w-full bg-green-600 hover:bg-green-500 text-white font-semibold py-3 rounded-lg transition-colors"
+            disabled={partido.estado === 'pendiente' || partido.estado === 'finalizado'}
+            className={`w-full font-semibold py-3 rounded-lg transition-colors ${
+              partido.estado === 'pendiente' || partido.estado === 'finalizado'
+                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-500 text-white'
+            }`}
           >
             + Nueva Sesión de Evaluación
           </button>
+          {partido.estado === 'pendiente' && (
+            <p className="text-gray-400 text-xs">
+              El partido debe comenzar antes de crear evaluaciones.
+            </p>
+          )}
+          {partido.estado === 'finalizado' && (
+            <p className="text-gray-400 text-xs">
+              El partido ya finalizó, no se pueden crear evaluaciones.
+            </p>
+          )}
         </div>
 
         {/* Jugadores en cancha */}
@@ -142,6 +200,99 @@ export default function PartidoAdminPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal de ajustar plantel */}
+      {plantelAbierto && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center">
+          <div className="bg-gray-800 w-full max-w-lg rounded-t-2xl p-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-semibold text-lg">Ajustar Plantel</h3>
+              <button
+                onClick={() => setPlantelAbierto(false)}
+                className="text-gray-400 hover:text-white text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <h4 className="text-white font-semibold mb-2">Quitar del Partido</h4>
+            <div className="space-y-2 mb-4">
+              {partido.jugadoresEnCancha.length === 0 ? (
+                <p className="text-gray-400 text-sm py-2">No hay jugadores en el partido</p>
+              ) : (
+                partido.jugadoresEnCancha.map(({ jugador, enCancha }) => (
+                  <div
+                    key={jugador.id}
+                    className="flex items-center gap-3 p-3 bg-gray-700 rounded-lg"
+                  >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${enCancha ? 'bg-primary-600' : 'bg-gray-600'}`}>
+                      #{jugador.numero}
+                    </div>
+                    <span className="text-white font-medium">{jugador.nombre}</span>
+                    {enCancha ? (
+                      <span className="text-primary-400 text-xs ml-auto">En cancha</span>
+                    ) : (
+                      <span className="text-gray-400 text-xs ml-auto">Suplente</span>
+                    )}
+                    <button
+                      onClick={() => cambiarPlantel('quitar', jugador.id)}
+                      className="w-8 h-8 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center text-sm font-bold transition-colors"
+                      title="Quitar"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <h4 className="text-white font-semibold mb-2">Agregar al Partido</h4>
+            <div className="space-y-2">
+              {todosJugadores
+                .filter(j => !partido.jugadoresEnCancha.some(p => p.jugador.id === j.id))
+                .length === 0 ? (
+                <p className="text-gray-400 text-sm py-2">Todos los jugadores ya están en el partido</p>
+              ) : (
+                todosJugadores
+                  .filter(j => !partido.jugadoresEnCancha.some(p => p.jugador.id === j.id))
+                  .map(jugador => (
+                    <div
+                      key={jugador.id}
+                      className="flex items-center gap-3 p-3 bg-gray-700 rounded-lg"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-sm font-bold">
+                        #{jugador.numero}
+                      </div>
+                      <span className="text-white font-medium">{jugador.nombre}</span>
+                      {jugador.posicion && (
+                        <span className="text-gray-400 text-xs ml-auto">{jugador.posicion}</span>
+                      )}
+                      <button
+                        onClick={() => cambiarPlantel('agregar', jugador.id)}
+                        className="w-8 h-8 rounded-full bg-green-600 hover:bg-green-500 flex items-center justify-center text-sm font-bold transition-colors"
+                        title="Agregar"
+                      >
+                        +
+                      </button>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de pincode para cambiar estado */}
+      {confirmarEstado && (
+        <PincodeModal
+          titulo={confirmarEstado === 'en_curso' ? 'Iniciar Partido' : 'Finalizar Partido'}
+          descripcion={confirmarEstado === 'en_curso'
+            ? 'Solo el administrador puede iniciar el partido.'
+            : 'Solo el administrador puede finalizar el partido.'}
+          onConfirm={() => cambiarEstado(confirmarEstado)}
+          onCancel={() => setConfirmarEstado(null)}
+        />
+      )}
     </div>
   )
 }

@@ -25,7 +25,7 @@ interface PartidoCompleto {
   id: number
   rival: string
   estado: string
-  jugadoresEnCancha: { jugador: Jugador; enCancha: boolean }[]
+  jugadoresEnCancha: { jugador: Jugador; enCancha: boolean; esSuplente: boolean }[]
   statsObjetivas: (Stats & { jugadorId: number; jugador: Jugador })[]
 }
 

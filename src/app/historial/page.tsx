@@ -6,6 +6,7 @@ import Navbar from '@/components/Navbar'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  LineChart, Line, CartesianGrid,
   Cell,
 } from 'recharts'
 
@@ -33,6 +34,46 @@ interface Comparativa {
 }
 
 const COLORS = ['#22c55e', '#3b82f6', '#eab308', '#ef4444', '#a855f7', '#06b6d4', '#f97316', '#ec4899', '#14b8a6', '#8b5cf6', '#f43f5e', '#84cc16']
+
+interface StatsRaw {
+  goles: number
+  asistencias: number
+  recuperaciones: number
+  tirosAPorteria: number
+  faltas: number
+  balonesPerdidos: number
+  tirosAfuera: number
+}
+
+interface StatsPorPartido extends StatsRaw {
+  partido: { rival: string; fecha: string }
+}
+
+interface DetalleJugador {
+  jugador: {
+    id: number
+    nombre: string
+    numero: number
+    posicion: string | null
+  }
+  totalPartidos: number
+  promedios: StatsRaw
+  stats: StatsPorPartido[]
+  evaluaciones: {
+    puntuacion: number
+    partido: { rival: string; fecha: string }
+  }[]
+}
+
+const STAT_LABELS: { key: keyof StatsRaw; label: string; color: string }[] = [
+  { key: 'goles', label: 'Goles', color: 'text-green-400' },
+  { key: 'asistencias', label: 'Asistencias', color: 'text-blue-400' },
+  { key: 'recuperaciones', label: 'Recuperaciones', color: 'text-yellow-400' },
+  { key: 'tirosAPorteria', label: 'Tiros a Portería', color: 'text-purple-400' },
+  { key: 'faltas', label: 'Faltas', color: 'text-red-400' },
+  { key: 'balonesPerdidos', label: 'Balones Perdidos', color: 'text-orange-400' },
+  { key: 'tirosAfuera', label: 'Tiros Afuera', color: 'text-gray-400' },
+]
 
 type MetricaKey = keyof Pick<Comparativa,
   'totalGoles' | 'totalAsistencias' | 'totalRecuperaciones' | 'totalFaltas' |
@@ -63,8 +104,15 @@ export default function HistorialPage() {
   const router = useRouter()
   const [datos, setDatos] = useState<Comparativa[]>([])
   const [metricaActiva, setMetricaActiva] = useState<MetricaKey>('totalGoles')
-  const [tabActiva, setTabActiva] = useState<'graficos' | 'tabla' | 'radar'>('graficos')
+  const [tabActiva, setTabActiva] = useState<'graficos' | 'tabla' | 'radar' | 'individual'>('graficos')
   const [radarSeleccionados, setRadarSeleccionados] = useState<number[]>([])
+  const [jugadorSel, setJugadorSel] = useState<number | null>(null)
+  const [detalleJugador, setDetalleJugador] = useState<DetalleJugador | null>(null)
+  const [cargandoDetalle, setCargandoDetalle] = useState(false)
+  const [evolJugador, setEvolJugador] = useState<number | null>(null)
+  const [evolStat, setEvolStat] = useState<keyof StatsRaw>('goles')
+  const [evolDetalle, setEvolDetalle] = useState<DetalleJugador | null>(null)
+  const [evolCargando, setEvolCargando] = useState(false)
 
   useEffect(() => {
     fetch('/api/historial/comparar')
@@ -86,6 +134,30 @@ export default function HistorialPage() {
   }
 
   const ningunoRadar = () => setRadarSeleccionados([])
+
+  const cargarDetalleJugador = async (id: number) => {
+    setJugadorSel(id)
+    setCargandoDetalle(true)
+    try {
+      const res = await fetch(`/api/historial/${id}`)
+      const data = await res.json()
+      setDetalleJugador(data)
+    } finally {
+      setCargandoDetalle(false)
+    }
+  }
+
+  const cargarEvolucion = async (id: number) => {
+    setEvolJugador(id)
+    setEvolCargando(true)
+    try {
+      const res = await fetch(`/api/historial/${id}`)
+      const data = await res.json()
+      setEvolDetalle(data)
+    } finally {
+      setEvolCargando(false)
+    }
+  }
 
   const metricaSeleccionada = METRICAS.find(m => m.key === metricaActiva)!
 
@@ -135,6 +207,7 @@ export default function HistorialPage() {
             { key: 'graficos' as const, label: 'Gráficos' },
             { key: 'tabla' as const, label: 'Tabla' },
             { key: 'radar' as const, label: 'Radar' },
+            { key: 'individual' as const, label: 'Individual' },
           ].map(tab => (
             <button
               key={tab.key}
@@ -226,6 +299,98 @@ export default function HistorialPage() {
                       <p className="text-xs text-gray-400">Total Faltas</p>
                     </div>
                   </div>
+                </div>
+
+                {/* Evolución por partido */}
+                <div className="bg-gray-800 p-4 rounded-xl">
+                  <h3 className="text-white font-semibold mb-3">Evolución por Partido</h3>
+
+                  <div className="mb-3">
+                    <label className="text-gray-400 text-sm mb-2 block">Jugador:</label>
+                    <div className="flex flex-wrap gap-2">
+                      {datos
+                        .filter(d => d.totalPartidos > 0)
+                        .sort((a, b) => a.jugador.numero - b.jugador.numero)
+                        .map(d => (
+                          <button
+                            key={d.jugador.id}
+                            onClick={() => cargarEvolucion(d.jugador.id)}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                              evolJugador === d.jugador.id
+                                ? 'bg-primary-600 text-white'
+                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            }`}
+                          >
+                            #{d.jugador.numero} {d.jugador.nombre.split(' ')[0]}
+                          </button>
+                        ))}
+                    </div>
+                    {datos.filter(d => d.totalPartidos > 0).length === 0 && (
+                      <p className="text-gray-400 text-sm py-2">Sin partidos registrados</p>
+                    )}
+                  </div>
+
+                  <label className="text-gray-400 text-sm mb-2 block">Métrica:</label>
+                  <select
+                    value={evolStat}
+                    onChange={(e) => setEvolStat(e.target.value as keyof StatsRaw)}
+                    className="w-full bg-gray-700 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 mb-4"
+                  >
+                    {STAT_LABELS.map(s => (
+                      <option key={s.key} value={s.key}>{s.label}</option>
+                    ))}
+                  </select>
+
+                  {evolCargando ? (
+                    <p className="text-gray-400 text-center py-8">Cargando evolución...</p>
+                  ) : !evolJugador ? (
+                    <p className="text-gray-400 text-center py-8">Selecciona un jugador para graficar su evolución</p>
+                  ) : evolDetalle && evolDetalle.stats.length > 0 ? (
+                    (() => {
+                      const statLabel = STAT_LABELS.find(s => s.key === evolStat)!.label
+                      const datosEvol = [...evolDetalle.stats]
+                        .sort((a, b) => new Date(a.partido.fecha).getTime() - new Date(b.partido.fecha).getTime())
+                        .map((item, i) => ({
+                          partido: `P${i + 1}`,
+                          rival: item.partido.rival,
+                          fecha: item.partido.fecha,
+                          valor: item[evolStat] || 0,
+                        }))
+                      return (
+                        <>
+                          <p className="text-gray-400 text-sm mb-2">
+                            {statLabel} de #{evolDetalle.jugador.numero} {evolDetalle.jugador.nombre} en cada partido
+                          </p>
+                          <ResponsiveContainer width="100%" height={280}>
+                            <LineChart data={datosEvol} margin={{ top: 10, right: 20, left: -20, bottom: 5 }}>
+                              <CartesianGrid stroke="#374151" strokeDasharray="3 3" />
+                              <XAxis dataKey="partido" tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                              <YAxis allowDecimals={false} domain={[0, 'auto']} tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                              <Tooltip
+                                contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
+                                labelStyle={{ color: '#fff' }}
+                                formatter={(value: number) => [value, statLabel]}
+                                labelFormatter={(label: string, payload: any) => {
+                                  const p = payload?.[0]?.payload
+                                  return p ? `${label} · vs ${p.rival} (${new Date(p.fecha).toLocaleDateString('es-ES')})` : label
+                                }}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="valor"
+                                stroke="#22c55e"
+                                strokeWidth={2}
+                                dot={{ r: 4, fill: '#22c55e' }}
+                                activeDot={{ r: 6 }}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </>
+                      )
+                    })()
+                  ) : (
+                    <p className="text-gray-400 text-center py-8">Sin partidos registrados para este jugador</p>
+                  )}
                 </div>
               </>
             )}
@@ -377,6 +542,126 @@ export default function HistorialPage() {
                     </div>
                   )}
                 </div>
+              </>
+            )}
+
+            {/* TAB: Individual */}
+            {tabActiva === 'individual' && (
+              <>
+                {/* Selector de jugador */}
+                <div className="bg-gray-800 p-4 rounded-xl">
+                  <h3 className="text-white font-semibold mb-3">Seleccionar Jugador</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {datos
+                      .filter(d => d.totalPartidos > 0)
+                      .sort((a, b) => a.jugador.numero - b.jugador.numero)
+                      .map(d => (
+                        <button
+                          key={d.jugador.id}
+                          onClick={() => cargarDetalleJugador(d.jugador.id)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            jugadorSel === d.jugador.id
+                              ? 'bg-primary-600 text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          }`}
+                        >
+                          #{d.jugador.numero} {d.jugador.nombre.split(' ')[0]}
+                        </button>
+                      ))}
+                  </div>
+                  {datos.filter(d => d.totalPartidos > 0).length === 0 && (
+                    <p className="text-gray-400 text-center py-4">Sin partidos registrados</p>
+                  )}
+                </div>
+
+                {cargandoDetalle ? (
+                  <p className="text-gray-400 text-center py-8">Cargando datos del jugador...</p>
+                ) : detalleJugador && jugadorSel ? (
+                  <div className="space-y-4">
+                    {/* Info del jugador */}
+                    {detalleJugador.jugador && (
+                      <div className="bg-gray-800 p-4 rounded-xl flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-full bg-primary-600 flex items-center justify-center text-xl font-bold">
+                          #{detalleJugador.jugador.numero}
+                        </div>
+                        <div>
+                          <h3 className="text-white text-lg font-bold">{detalleJugador.jugador.nombre}</h3>
+                          {detalleJugador.jugador.posicion && (
+                            <p className="text-gray-400">{detalleJugador.jugador.posicion}</p>
+                          )}
+                          <p className="text-gray-400 text-sm">{detalleJugador.totalPartidos} partidos jugados</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {detalleJugador.stats.length === 0 ? (
+                      <p className="text-gray-400 text-center py-4">Sin partidos registrados</p>
+                    ) : (
+                      <>
+                        {/* Totales acumulados */}
+                        <div className="bg-gray-800 p-4 rounded-xl">
+                          <h3 className="text-white font-semibold mb-3">Totales Acumulados</h3>
+                          <div className="grid grid-cols-2 gap-3">
+                            {STAT_LABELS.map(({ key, label, color }) => (
+                              <div key={key} className="bg-gray-700 p-3 rounded-lg">
+                                <p className={`text-2xl font-bold ${color}`}>
+                                  {detalleJugador.stats.reduce((sum, item) => sum + (item[key] || 0), 0)}
+                                </p>
+                                <p className="text-xs text-gray-400">{label}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Promedios por partido */}
+                        <div className="bg-gray-800 p-4 rounded-xl">
+                          <h3 className="text-white font-semibold mb-3">Promedios por Partido</h3>
+                          <div className="grid grid-cols-2 gap-3">
+                            {STAT_LABELS.map(({ key, label, color }) => (
+                              <div key={key} className="bg-gray-700 p-3 rounded-lg">
+                                <p className={`text-2xl font-bold ${color}`}>
+                                  {detalleJugador.promedios[key].toFixed(1)}
+                                </p>
+                                <p className="text-xs text-gray-400">{label}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Historial de partidos */}
+                        <div className="bg-gray-800 p-4 rounded-xl">
+                          <h3 className="text-white font-semibold mb-3">Historial de Partidos</h3>
+                          <div className="space-y-3">
+                            {detalleJugador.stats.map((item, index) => (
+                              <div key={index} className="bg-gray-700 rounded-lg overflow-hidden">
+                                <div className="flex items-center justify-between px-4 py-3 bg-gray-750">
+                                  <p className="text-white font-medium">vs {item.partido.rival}</p>
+                                  <p className="text-gray-400 text-sm">
+                                    {new Date(item.partido.fecha).toLocaleDateString('es-ES', {
+                                      day: 'numeric',
+                                      month: 'short',
+                                      year: 'numeric'
+                                    })}
+                                  </p>
+                                </div>
+                                <div className="divide-y divide-gray-600/40">
+                                  {STAT_LABELS.map(({ key, label, color }) => (
+                                    <div key={key} className="flex items-center justify-between px-4 py-2">
+                                      <span className="text-gray-300 text-sm">{label}</span>
+                                      <span className={`font-semibold ${color}`}>{item[key]}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-gray-400 text-center py-4">Selecciona un jugador para ver sus estadísticas</p>
+                )}
               </>
             )}
           </>

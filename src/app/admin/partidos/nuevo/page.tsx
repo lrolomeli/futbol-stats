@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
+import PincodeModal from '@/components/PincodeModal'
 
 interface Jugador {
   id: number
@@ -19,6 +20,7 @@ export default function NuevoPartidoPage() {
   const [cancha, setCancha] = useState('')
   const [seleccionados, setSeleccionados] = useState<number[]>([])
   const [enviando, setEnviando] = useState(false)
+  const [confirmarCrear, setConfirmarCrear] = useState(false)
 
   useEffect(() => {
     fetch('/api/jugadores')
@@ -36,10 +38,13 @@ export default function NuevoPartidoPage() {
     )
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!rival || !fecha || seleccionados.length === 0) return
+    setConfirmarCrear(true)
+  }
 
+  const crearPartido = async () => {
     setEnviando(true)
 
     try {
@@ -179,6 +184,15 @@ export default function NuevoPartidoPage() {
           </button>
         </form>
       </div>
+
+      {confirmarCrear && (
+        <PincodeModal
+          titulo="Crear Partido"
+          descripcion="Solo el administrador puede crear el partido."
+          onConfirm={crearPartido}
+          onCancel={() => setConfirmarCrear(false)}
+        />
+      )}
     </div>
   )
 }
