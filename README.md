@@ -26,12 +26,13 @@ Sistema de estadisticas de futbol 7 con registro en tiempo real y evaluacion sub
 - **Registro de stats objetivas**: 7 estadisticas por jugador (goles, asistencias, recuperaciones, tiros a portería, faltas, balones perdidos, tiros afuera). Tabla con +/- compacto y modal de edicion rapida.
 - **Cambios de jugador**: substituciones en vivo ("Cambiar Jugador") entre banco y cancha.
 - **Acciones protegidas por pincode**: crear partido, iniciar partido y finalizar partido exigen el pincode de administrador (`098651`).
-- **Reset global**: desde la portada se puede reiniciar todo (partidos, jugadores y estadisticas) ingresando el pincode.
+- **Reset global**: desde la portada se puede reiniciar todo (partidos, jugadores, estadisticas y formacion) ingresando el pincode.
 - **Evaluacion subjetiva**: multiples jueces califican a cada jugador del 1 al 5. Cada juez tiene una URL unica. Solo se puede crear una sesion de evaluacion con el partido en curso.
 - **Asignacion de jugadores por juez**: cada juez selecciona qué jugadores evaluar; el sistema bloquea para que no haya conflictos entre jueces.
 - **Historial**: estadisticas historicas por jugador, metricas derivadas (goles/partido, efectividad, etc.), radar chart con seleccion de jugadores, graficos de barras, tabla comparativa.
 - **Tab Individual**: datos crudos por partido + totales acumulados + promedios por partido, por cada jugador.
 - **Grafico de evolucion**: linea por jugador que muestra como cambia una estadistica a lo largo de sus partidos.
+- **Formacion**: grilla unica y persistente de 7 posiciones (portero, defensas, laterales, centrocampista, delantero) x 4 minutos (0, 10, 20, 30). Cada celda admite multiples jugadores, con colores por jugador para identificarlos facilmente. No se admiten repetidos dentro de la misma columna (minuto). La edicion completa se desbloquea con el pincode de administrador una sola vez.
 - **3 vistas por rol**: admin (`/admin`), operador (`/partido/[id]`), juez (`/evaluacion/[partidoId]/[token]`).
 - **Docker Compose**: despliegue con un solo comando.
 
@@ -132,10 +133,10 @@ bluelockstats/
 ├── scripts/start.sh            # Startup: prisma db push && npm start
 ├── .env.example                # Template de variables de entorno
 ├── prisma/
-│   └── schema.prisma           # Esquema de BD (5 modelos)
+│   └── schema.prisma           # Esquema de BD (6 modelos)
 ├── src/
 │   ├── app/
-│   │   ├── api/                # API Routes (15 endpoints)
+│   │   ├── api/                # API Routes (19 endpoints)
 │   │   │   ├── reset/          # Reinicio global (pincode)
 │   │   │   ├── jugadores/
 │   │   │   ├── partidos/
@@ -143,11 +144,13 @@ bluelockstats/
 │   │   │   │       ├── stats/  # Actualizar stat
 │   │   │   │       ├── cambiar/# Cambiar jugador
 │   │   │   │       └── plantel/# Agregar/quitar jugadores del partido
+│   │   │   ├── formacion/      # Grilla de formacion (GET/PUT con pincode)
 │   │   │   ├── evaluacion/
 │   │   │   └── historial/
 │   │   ├── admin/              # Panel de administracion
 │   │   │   ├── page.tsx        # Dashboard admin
 │   │   │   ├── jugadores/      # CRUD de jugadores
+│   │   │   ├── formacion/      # Grilla 7x4 de formacion
 │   │   │   └── partidos/
 │   │   │       ├── nuevo/      # Crear partido
 │   │   │       └── [id]/       # Detalle/control del partido
@@ -164,7 +167,9 @@ bluelockstats/
 │   │   └── PincodeModal.tsx    # Modal de pincode reutilizable
 │   └── lib/
 │       ├── db.ts               # Cliente Prisma (singleton)
-│       └── redis.ts            # Cliente Redis
+│       ├── redis.ts            # Cliente Redis
+│       ├── formacion.ts        # Posiciones, minutos y tipos de formacion
+│       └── colores.ts          # Paleta de colores por jugador
 └── public/                     # Archivos estaticos
 ```
 
@@ -219,6 +224,12 @@ EvaluacionJuez
 ├── puntuacion        Int     // 1-5 por jugador
 ├── completado        Boolean @default(false)
 ├── @@unique([partidoId, jugadorId, juezToken])
+
+Formacion
+├── id         Int      @id @default(autoincrement())
+├── datos      Json     // grilla 7 posiciones x 4 minutos, cada celda es un array de jugadorIds
+├── updatedAt  DateTime
+└── Nota: tabla unica (una sola fila persistente). El PUT valida que no haya jugadores repetidos dentro de una misma columna (minuto) y exige pincode de administrador.
 ```
 
 ---
@@ -265,7 +276,14 @@ EvaluacionJuez
 
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
-| `POST` | `/api/reset` | Reiniciar todo el sistema `{ pincode }` (elimina partidos, jugadores y estadisticas) |
+| `POST` | `/api/reset` | Reiniciar todo el sistema `{ pincode }` (elimina partidos, jugadores, estadisticas y formacion) |
+
+### Formacion
+
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| `GET` | `/api/formacion` | Obtener la grilla persistente (datos + updatedAt) |
+| `PUT` | `/api/formacion` | Guardar la grilla `{ datos, pincode }`. Valida estructura, no repetidos por columna y pincode de admin |
 
 ---
 
@@ -274,9 +292,10 @@ EvaluacionJuez
 ### 1. Preparacion (Admin)
 
 1. Ir a `/admin/jugadores` y agregar los jugadores del equipo (nombre, numero, posicion).
-2. Ir a `/admin/partidos/nuevo`, seleccionar los titulares y crear el partido (requiere pincode de administrador).
-3. En `/admin/partidos/[id]` usar "Ajustar Plantel" para agregar/quitar jugadores del partido (solo mientras el partido esta pendiente).
-4. Presionar "Iniciar Partido" (requiere pincode). Al iniciar, la gestion de plantel se desactiva y se habilita la creacion de evaluaciones.
+2. Ir a `/admin/formacion`, tocar "Editar", ingresar el pincode y acomodar los jugadores en la grilla de posiciones por minuto (guardar al final).
+3. Ir a `/admin/partidos/nuevo`, seleccionar los titulares y crear el partido (requiere pincode de administrador).
+4. En `/admin/partidos/[id]` usar "Ajustar Plantel" para agregar/quitar jugadores del partido (solo mientras el partido esta pendiente).
+5. Presionar "Iniciar Partido" (requiere pincode). Al iniciar, la gestion de plantel se desactiva y se habilita la creacion de evaluaciones.
 
 ### 2. En cancha (Operador)
 
@@ -304,7 +323,7 @@ EvaluacionJuez
 
 ### 5. Reset global
 
-Desde la portada, "Reiniciar Estadisticas" permite eliminar todo (partidos, jugadores y estadisticas) confirmando con el pincode de administrador.
+Desde la portada, "Reiniciar Estadisticas" permite eliminar todo (partidos, jugadores, estadisticas y formacion) confirmando con el pincode de administrador.
 
 ---
 
