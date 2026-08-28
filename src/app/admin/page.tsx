@@ -58,6 +58,14 @@ export default function AdminPage() {
             <div className="text-2xl mb-2">⚽</div>
             <span className="text-white font-medium">Nuevo Partido</span>
           </Link>
+
+          <Link
+            href="/admin/formacion"
+            className="bg-gray-800 hover:bg-gray-750 p-4 rounded-xl text-center transition-colors"
+          >
+            <div className="text-2xl mb-2">📋</div>
+            <span className="text-white font-medium">Formación</span>
+          </Link>
         </div>
 
         <div>

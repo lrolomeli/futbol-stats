@@ -65,6 +65,12 @@ model StatsObjetivas {
   @@unique([partidoId, jugadorId])
 }
 
+model Formacion {
+  id        Int      @id @default(autoincrement())
+  datos     Json
+  updatedAt DateTime @updatedAt
+}
+
 model EvaluacionJuez {
   id          Int     @id @default(autoincrement())
   partidoId   Int

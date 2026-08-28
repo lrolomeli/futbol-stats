@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
   await prisma.$transaction([
     prisma.jugador.deleteMany(),
     prisma.partido.deleteMany(),
+    prisma.formacion.deleteMany(),
   ])
 
   return NextResponse.json({ success: true })
