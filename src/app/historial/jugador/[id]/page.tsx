@@ -120,6 +120,23 @@ export default function JugadorHistorialPage() {
           </div>
         </div>
 
+        {/* Totales */}
+        {datos.stats.length > 0 && (
+          <div className="bg-gray-800 p-4 rounded-xl">
+            <h3 className="text-white font-semibold mb-3">Totales Acumulados</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {statLabels.map(({ key, label, color }) => (
+                <div key={key} className="bg-gray-700 p-3 rounded-lg">
+                  <p className={`text-2xl font-bold ${color}`}>
+                    {datos.stats.reduce((sum, item) => sum + (item.stats[key as keyof StatsHistorial] || 0), 0)}
+                  </p>
+                  <p className="text-xs text-gray-400">{label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Historial de partidos */}
         <div className="bg-gray-800 p-4 rounded-xl">
           <h3 className="text-white font-semibold mb-3">Historial de Partidos</h3>
@@ -128,23 +145,26 @@ export default function JugadorHistorialPage() {
           ) : (
             <div className="space-y-3">
               {datos.stats.map((item, index) => (
-                <div key={index} className="bg-gray-700 p-3 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
+                <div key={index} className="bg-gray-700 rounded-lg overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-750">
                     <p className="text-white font-medium">
                       vs {item.partido.rival}
                     </p>
                     <p className="text-gray-400 text-sm">
-                      {new Date(item.partido.fecha).toLocaleDateString('es-ES')}
+                      {new Date(item.partido.fecha).toLocaleDateString('es-ES', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric'
+                      })}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2 text-sm">
-                    <span className="text-green-400">⚽{item.stats.goles}</span>
-                    <span className="text-blue-400">🎯{item.stats.asistencias}</span>
-                    <span className="text-yellow-400">🔄{item.stats.recuperaciones}</span>
-                    <span className="text-purple-400">🎯{item.stats.tirosAPorteria}</span>
-                    <span className="text-red-400">⚠️{item.stats.faltas}</span>
-                    <span className="text-orange-400">❌{item.stats.balonesPerdidos}</span>
-                    <span className="text-gray-400">🚪{item.stats.tirosAfuera}</span>
+                  <div className="divide-y divide-gray-600/40">
+                    {statLabels.map(({ key, label, color }) => (
+                      <div key={key} className="flex items-center justify-between px-4 py-2">
+                        <span className="text-gray-300 text-sm">{label}</span>
+                        <span className={`font-semibold ${color}`}>{item.stats[key as keyof StatsHistorial]}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}

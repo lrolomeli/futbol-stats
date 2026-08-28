@@ -98,37 +98,74 @@ export default function NuevoPartidoPage() {
             />
           </div>
 
-          <div className="bg-gray-800 p-4 rounded-xl">
-            <h2 className="text-white font-semibold mb-3">
-              Seleccionar Titulares ({seleccionados.length} seleccionados)
+          <div className="bg-gray-800 p-4 rounded-xl space-y-4">
+            <h2 className="text-white font-semibold">
+              Titulares Seleccionados ({seleccionados.length})
             </h2>
 
-            {jugadores.length === 0 ? (
+            {seleccionados.length === 0 ? (
               <p className="text-gray-400 text-center py-4">
-                No hay jugadores. Agrega jugadores primero.
+                No hay titulares seleccionados
               </p>
             ) : (
               <div className="space-y-2">
-                {jugadores.map(jugador => (
-                  <button
-                    key={jugador.id}
-                    type="button"
-                    onClick={() => toggleJugador(jugador.id)}
-                    className={`w-full p-3 rounded-lg flex items-center gap-3 transition-colors ${
-                      seleccionados.includes(jugador.id)
-                        ? 'bg-primary-600 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-sm font-bold">
-                      #{jugador.numero}
+                {seleccionados.map(id => {
+                  const jugador = jugadores.find(j => j.id === id)
+                  if (!jugador) return null
+                  return (
+                    <div key={jugador.id} className="p-3 rounded-lg flex items-center gap-3 bg-primary-600 text-white">
+                      <div className="w-8 h-8 rounded-full bg-primary-700 flex items-center justify-center text-sm font-bold">
+                        #{jugador.numero}
+                      </div>
+                      <span className="font-medium">{jugador.nombre}</span>
+                      {jugador.posicion && (
+                        <span className="text-sm opacity-75 ml-auto">{jugador.posicion}</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleJugador(jugador.id)}
+                        className="w-8 h-8 rounded-full bg-primary-800 hover:bg-red-600 flex items-center justify-center text-sm font-bold transition-colors"
+                        title="Quitar"
+                      >
+                        ✕
+                      </button>
                     </div>
-                    <span className="font-medium">{jugador.nombre}</span>
-                    {jugador.posicion && (
-                      <span className="text-sm opacity-75 ml-auto">{jugador.posicion}</span>
-                    )}
-                  </button>
-                ))}
+                  )
+                })}
+              </div>
+            )}
+
+            <h2 className="text-white font-semibold pt-2 border-t border-gray-700">
+              Disponibles
+            </h2>
+
+            {jugadores.filter(j => !seleccionados.includes(j.id)).length === 0 ? (
+              <p className="text-gray-400 text-center py-4">
+                Todos los jugadores ya fueron seleccionados
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {jugadores
+                  .filter(j => !seleccionados.includes(j.id))
+                  .map(jugador => (
+                    <div key={jugador.id} className="p-3 rounded-lg flex items-center gap-3 bg-gray-700 text-gray-300">
+                      <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-sm font-bold">
+                        #{jugador.numero}
+                      </div>
+                      <span className="font-medium">{jugador.nombre}</span>
+                      {jugador.posicion && (
+                        <span className="text-sm opacity-75 ml-auto">{jugador.posicion}</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleJugador(jugador.id)}
+                        className="w-8 h-8 rounded-full bg-green-600 hover:bg-green-500 flex items-center justify-center text-sm font-bold transition-colors"
+                        title="Agregar"
+                      >
+                        +
+                      </button>
+                    </div>
+                  ))}
               </div>
             )}
           </div>

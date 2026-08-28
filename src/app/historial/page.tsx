@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -60,6 +60,7 @@ const METRICAS: MetricaOption[] = [
 ]
 
 export default function HistorialPage() {
+  const router = useRouter()
   const [datos, setDatos] = useState<Comparativa[]>([])
   const [metricaActiva, setMetricaActiva] = useState<MetricaKey>('totalGoles')
   const [tabActiva, setTabActiva] = useState<'graficos' | 'tabla' | 'radar'>('graficos')
@@ -256,7 +257,11 @@ export default function HistorialPage() {
                         .filter(d => d.totalPartidos > 0)
                         .sort((a, b) => b.golesPorPartido - a.golesPorPartido)
                         .map(d => (
-                          <tr key={d.jugador.id} className="border-b border-gray-700/50 hover:bg-gray-750">
+                          <tr
+                            key={d.jugador.id}
+                            onClick={() => router.push(`/historial/jugador/${d.jugador.id}`)}
+                            className="border-b border-gray-700/50 hover:bg-gray-750 cursor-pointer transition-colors"
+                          >
                             <td className="px-3 py-3 text-primary-400 font-bold">#{d.jugador.numero}</td>
                             <td className="px-3 py-3 text-white font-medium">{d.jugador.nombre}</td>
                             <td className="px-3 py-3 text-center text-gray-300">{d.totalPartidos}</td>
