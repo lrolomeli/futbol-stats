@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import Navbar from '@/components/Navbar'
+import PincodeModal from '@/components/PincodeModal'
 import { POSICIONES, MINUTOS, FORMACION_VACIA } from '@/lib/formacion'
 import type { ClavePosicion, FormacionData } from '@/lib/formacion'
+import { colorDeJugador } from '@/lib/colores'
 
 interface Jugador {
   id: number
@@ -21,9 +23,26 @@ export default function FormacionPage() {
   const [datos, setDatos] = useState<FormacionData | null>(null)
   const [jugadores, setJugadores] = useState<Jugador[]>([])
   const [celdaAbierta, setCeldaAbierta] = useState<CeldaSeleccionada | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [mensaje, setMensaje] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null)
+  const [editando, setEditando] = useState(false)
+  const [pincode, setPincode] = useState<string | null>(null)
+  const [pincodeAbierto, setPincodeAbierto] = useState(false)
+
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current)
+    }
+  }, [])
+
+  const mostrarToast = (texto: string) => {
+    setToast(texto)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 1400)
+  }
 
   useEffect(() => {
     cargarTodo()
@@ -109,14 +128,14 @@ export default function FormacionPage() {
   }
 
   const guardar = async () => {
-    if (!datos) return
+    if (!datos || !editando || !pincode) return
     setGuardando(true)
     setMensaje(null)
     try {
       const res = await fetch('/api/formacion', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ datos })
+        body: JSON.stringify({ datos, pincode })
       })
       if (!res.ok) {
         const error = await res.json().catch(() => null)
@@ -166,17 +185,38 @@ export default function FormacionPage() {
 
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-white font-semibold text-lg">Rotación por Minutos</h2>
-          <button
-            onClick={limpiarTodo}
-            className="text-gray-400 hover:text-red-400 text-sm px-2 py-1"
-          >
-            Vaciar todo
-          </button>
+          <div className="flex items-center gap-2">
+            {editando && (
+              <button
+                onClick={limpiarTodo}
+                className="text-gray-400 hover:text-red-400 text-sm px-2 py-1"
+              >
+                Vaciar todo
+              </button>
+            )}
+            {editando ? (
+              <button
+                onClick={() => setEditando(false)}
+                className="bg-gray-700 hover:bg-gray-600 text-white text-sm font-semibold px-3 py-2 rounded-lg transition-colors"
+              >
+                🔒 Bloquear
+              </button>
+            ) : (
+              <button
+                onClick={() => setPincodeAbierto(true)}
+                className="bg-primary-600 hover:bg-primary-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+              >
+                🔓 Editar
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="bg-gray-800 p-4 rounded-xl">
           <p className="text-gray-400 text-xs mb-3">
-            Tocá cualquier celda para agregar jugadores. Un jugador no puede repetirse en el mismo minuto.
+            {editando
+              ? 'Tocá cualquier celda para agregar jugadores. Un jugador no puede repetirse en el mismo minuto.'
+              : 'Vista de la formación. Tocá "Editar" para modificarla.'}
           </p>
 
           {jugadores.length === 0 ? (
@@ -184,66 +224,75 @@ export default function FormacionPage() {
               No hay jugadores registrados. <a href="/admin/jugadores" className="text-primary-400 underline">Agregalos primero</a>.
             </p>
           ) : (
-            <div className="overflow-x-auto -mx-4 px-4">
-              <div className="min-w-[680px]">
-                <div className="flex gap-2 mb-2">
-                  <div className="w-32 shrink-0"></div>
+            <div className="grid grid-cols-[auto_repeat(4,1fr)] gap-1">
+              <div></div>
+              {MINUTOS.map(minuto => (
+                <div key={minuto} className="text-center">
+                  <span className="text-primary-400 text-[10px] font-semibold">Min {minuto}</span>
+                </div>
+              ))}
+
+              {POSICIONES.map(({ key, label, numero }) => (
+                <Fragment key={key}>
+                  <div className="flex items-center justify-center">
+                    <button
+                      onClick={() => mostrarToast(label)}
+                      className="w-7 h-7 rounded-full bg-gray-700 hover:bg-primary-600 text-white text-xs font-bold transition-colors"
+                      title={label}
+                    >
+                      {numero}
+                    </button>
+                  </div>
                   {MINUTOS.map(minuto => (
-                    <div key={minuto} className="flex-1 min-w-[130px] text-center">
-                      <span className="text-primary-400 text-xs font-semibold">Min {minuto}</span>
+                    <div
+                      key={minuto}
+                      onClick={editando ? () => setCeldaAbierta({ posicion: key, minuto: String(minuto) }) : undefined}
+                      className={`min-h-[44px] bg-gray-700/60 border border-gray-600/60 rounded-md p-1 flex flex-col gap-0.5 transition-colors ${
+                        editando ? 'cursor-pointer hover:border-primary-500/60' : ''
+                      }`}
+                    >
+                      {datos[key][String(minuto)].length === 0 ? (
+                        <div className="flex-1 flex items-center justify-center text-gray-500 text-sm select-none">+</div>
+                      ) : (
+                        datos[key][String(minuto)].map(id => {
+                          const jugador = jugadorPorId.get(id)
+                          if (!jugador) return null
+                          return (
+                            <div key={id} className="flex items-center gap-0.5 bg-gray-800 rounded px-1 py-0.5 min-w-0 border-l-2"
+                              style={{ borderLeftColor: colorDeJugador(id) }}>
+                              <span className="font-bold text-[9px] shrink-0" style={{ color: colorDeJugador(id) }}>#{jugador.numero}</span>
+                              <span className="text-white text-[9px] truncate flex-1 min-w-0 leading-tight">{jugador.nombre}</span>
+                              {editando && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); quitarJugador(key, String(minuto), id) }}
+                                  className="text-gray-500 hover:text-red-400 text-[9px] font-bold px-0.5 shrink-0"
+                                  title="Quitar"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })
+                      )}
                     </div>
                   ))}
-                </div>
-
-                {POSICIONES.map(({ key, label }) => (
-                  <div key={key} className="flex gap-2 mb-2">
-                    <div className="w-32 shrink-0 flex items-center">
-                      <p className="text-gray-400 text-xs font-medium leading-tight">{label}</p>
-                    </div>
-                    {MINUTOS.map(minuto => (
-                      <div
-                        key={minuto}
-                        onClick={() => setCeldaAbierta({ posicion: key, minuto: String(minuto) })}
-                        className="flex-1 min-w-[130px] min-h-[64px] bg-gray-700/60 border border-gray-600/60 rounded-lg p-1.5 cursor-pointer hover:border-primary-500/60 transition-colors"
-                      >
-                        {datos[key][String(minuto)].length === 0 ? (
-                          <div className="h-full flex items-center justify-center text-gray-500 text-xl select-none">+</div>
-                        ) : (
-                          <div className="space-y-1">
-                            {datos[key][String(minuto)].map(id => {
-                              const jugador = jugadorPorId.get(id)
-                              if (!jugador) return null
-                              return (
-                                <div key={id} className="flex items-center gap-1 bg-gray-800 rounded-md px-2 py-1 group">
-                                  <span className="text-primary-400 font-bold text-xs">#{jugador.numero}</span>
-                                  <span className="text-white text-xs truncate flex-1">{jugador.nombre}</span>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); quitarJugador(key, String(minuto), id) }}
-                                    className="text-gray-500 hover:text-red-400 text-xs font-bold px-1"
-                                    title="Quitar"
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
+                </Fragment>
+              ))}
             </div>
           )}
         </div>
 
         <button
           onClick={guardar}
-          disabled={guardando}
-          className="w-full bg-primary-600 hover:bg-primary-500 disabled:bg-gray-600 text-white font-semibold py-3 rounded-xl transition-colors"
+          disabled={!editando || guardando}
+          className={`w-full font-semibold py-3 rounded-xl transition-colors ${
+            editando
+              ? 'bg-primary-600 hover:bg-primary-500 disabled:bg-gray-600 text-white'
+              : 'bg-gray-700 text-gray-500'
+          }`}
         >
-          {guardando ? 'Guardando...' : 'Guardar Formación'}
+          {guardando ? 'Guardando...' : editando ? 'Guardar Formación' : '🔒 Desbloqueá para guardar'}
         </button>
       </div>
 
@@ -258,6 +307,24 @@ export default function FormacionPage() {
           onAgregar={agregarJugador}
           onCerrar={() => setCeldaAbierta(null)}
           posicionLabel={posicionLabel}
+        />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 shadow-lg pointer-events-none">
+          <p className="text-white text-sm font-semibold">{toast}</p>
+        </div>
+      )}
+
+      {pincodeAbierto && (
+        <PincodeModal
+          titulo="Editar Formación"
+          descripcion="Solo el administrador puede modificar la formación."
+          onConfirm={(pin) => {
+            setPincode(pin)
+            setEditando(true)
+          }}
+          onCancel={() => setPincodeAbierto(false)}
         />
       )}
     </div>
@@ -310,8 +377,9 @@ function CeldaModal({
             if (!jugador) return null
             return (
               <div key={id} className="flex items-center gap-3 p-3 bg-gray-700 rounded-lg">
-                <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-sm font-bold">
-                  #{jugador.numero}
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                  style={{ backgroundColor: `${colorDeJugador(id)}33`, color: colorDeJugador(id) }}>
+                  {jugador.numero}
                 </div>
                 <span className="text-white font-medium">{jugador.nombre}</span>
                 <span className="text-primary-400 text-xs ml-auto">En esta celda</span>
@@ -332,8 +400,9 @@ function CeldaModal({
               const lugar = otroLugar(jugador.id)
               return (
                 <div key={jugador.id} className="flex items-center gap-3 p-3 bg-gray-700 rounded-lg">
-                  <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-sm font-bold">
-                    #{jugador.numero}
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                    style={{ backgroundColor: `${colorDeJugador(jugador.id)}33`, color: colorDeJugador(jugador.id) }}>
+                    {jugador.numero}
                   </div>
                   <span className="text-white font-medium">{jugador.nombre}</span>
                   {jugador.posicion && (

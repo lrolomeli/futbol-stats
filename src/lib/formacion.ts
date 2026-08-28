@@ -1,11 +1,11 @@
 export const POSICIONES = [
-  { key: 'portero', label: 'Portero' },
-  { key: 'defensa_izquierdo', label: 'Defensa Izquierdo' },
-  { key: 'defensa_derecho', label: 'Defensa Derecho' },
-  { key: 'lateral_izquierdo', label: 'Lateral Izquierdo' },
-  { key: 'lateral_derecho', label: 'Lateral Derecho' },
-  { key: 'centrocampista', label: 'Centrocampista' },
-  { key: 'delantero', label: 'Delantero' },
+  { key: 'portero', label: 'Portero', numero: 1 },
+  { key: 'defensa_izquierdo', label: 'Defensa Izquierdo', numero: 2 },
+  { key: 'defensa_derecho', label: 'Defensa Derecho', numero: 3 },
+  { key: 'lateral_izquierdo', label: 'Lateral Izquierdo', numero: 4 },
+  { key: 'lateral_derecho', label: 'Lateral Derecho', numero: 5 },
+  { key: 'centrocampista', label: 'Centrocampista', numero: 6 },
+  { key: 'delantero', label: 'Delantero', numero: 7 },
 ] as const
 
 export const MINUTOS = [0, 10, 20, 30] as const

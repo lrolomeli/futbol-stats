@@ -5,6 +5,8 @@ import type { DatosFormacion, FormacionData } from '@/lib/formacion'
 
 export const dynamic = 'force-dynamic'
 
+const PIN_EDICION = '098651'
+
 export async function GET() {
   const formacion = await prisma.formacion.findFirst()
   return NextResponse.json({
@@ -15,6 +17,10 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   const body = await request.json().catch(() => null)
+  if (body?.pincode !== PIN_EDICION) {
+    return NextResponse.json({ error: 'Pincode incorrecto' }, { status: 401 })
+  }
+
   const datos: DatosFormacion = (body?.datos ?? FORMACION_VACIA()) as DatosFormacion
 
   const validacion = await validarDatos(datos)

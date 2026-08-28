@@ -7,7 +7,7 @@ const PIN = '098651'
 interface PincodeModalProps {
   titulo: string
   descripcion?: string
-  onConfirm: () => void | Promise<void>
+  onConfirm: (pincode: string) => void | Promise<void>
   onCancel: () => void
 }
 
@@ -22,7 +22,7 @@ export default function PincodeModal({ titulo, descripcion, onConfirm, onCancel 
       return
     }
     setCargando(true)
-    await onConfirm()
+    await onConfirm(pincode)
     setCargando(false)
     onCancel()
   }
