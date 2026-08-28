@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import ResetStatsButton from './ResetStatsButton'
 
 export default function Home() {
   return (
@@ -23,10 +24,14 @@ export default function Home() {
           Ver Estadísticas Históricas
         </Link>
 
-        <div className="text-center pt-8">
+        <div className="text-center pt-6">
           <p className="text-gray-500 text-sm">
             Los jueces acceden directamente con el link del partido
           </p>
+        </div>
+
+        <div className="w-full pt-4 border-t border-gray-800">
+          <ResetStatsButton />
         </div>
       </div>
     </div>
