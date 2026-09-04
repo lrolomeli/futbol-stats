@@ -3,6 +3,8 @@ import { prisma } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
+const PARTIDOS_PIN = '098651'
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -36,4 +38,17 @@ export async function PUT(
     data: { estado: body.estado }
   })
   return NextResponse.json(partido)
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const body = await request.json().catch(() => null)
+  if (body?.pincode !== PARTIDOS_PIN) {
+    return NextResponse.json({ error: 'Pincode incorrecto' }, { status: 401 })
+  }
+
+  await prisma.partido.delete({ where: { id: parseInt(params.id) } })
+  return NextResponse.json({ mensaje: 'Partido eliminado' })
 }

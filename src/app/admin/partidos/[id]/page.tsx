@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import PincodeModal from '@/components/PincodeModal'
 
@@ -24,10 +24,13 @@ interface Partido {
 
 export default function PartidoAdminPage() {
   const params = useParams()
+  const router = useRouter()
   const [partido, setPartido] = useState<Partido | null>(null)
   const [plantelAbierto, setPlantelAbierto] = useState(false)
   const [todosJugadores, setTodosJugadores] = useState<Jugador[]>([])
   const [confirmarEstado, setConfirmarEstado] = useState<'en_curso' | 'finalizado' | null>(null)
+  const [confirmarEliminar, setConfirmarEliminar] = useState(false)
+  const [errorEliminar, setErrorEliminar] = useState(false)
 
   useEffect(() => {
     fetch(`/api/partidos/${params.id}`)
@@ -69,6 +72,21 @@ export default function PartidoAdminPage() {
       body: JSON.stringify({ estado: nuevoEstado })
     })
     setPartido(prev => prev ? { ...prev, estado: nuevoEstado } : null)
+  }
+
+  const eliminarPartido = async (pincode: string) => {
+    const res = await fetch(`/api/partidos/${params.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pincode })
+    })
+
+    if (!res.ok) {
+      setErrorEliminar(true)
+      return
+    }
+
+    router.push('/admin')
   }
 
   if (!partido) {
@@ -143,6 +161,13 @@ export default function PartidoAdminPage() {
             }`}
           >
             👥 Ajustar Plantel
+          </button>
+
+          <button
+            onClick={() => { setErrorEliminar(false); setConfirmarEliminar(true) }}
+            className="w-full font-semibold py-3 rounded-lg transition-colors bg-red-600 hover:bg-red-500 text-white"
+          >
+            🗑 Eliminar Partido
           </button>
         </div>
 
@@ -292,6 +317,31 @@ export default function PartidoAdminPage() {
           onConfirm={() => cambiarEstado(confirmarEstado)}
           onCancel={() => setConfirmarEstado(null)}
         />
+      )}
+
+      {/* Modal de pincode para eliminar partido */}
+      {confirmarEliminar && (
+        <PincodeModal
+          titulo="Eliminar Partido"
+          descripcion="Esto eliminará el partido y todas sus estadísticas y evaluaciones permanentemente."
+          onConfirm={(pin) => eliminarPartido(pin)}
+          onCancel={() => { setConfirmarEliminar(false); setErrorEliminar(false) }}
+        />
+      )}
+
+      {errorEliminar && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-xs text-center">
+            <h3 className="text-white font-bold text-lg mb-2">Error</h3>
+            <p className="text-red-400 text-sm mb-4">No se pudo eliminar el partido.</p>
+            <button
+              onClick={() => setErrorEliminar(false)}
+              className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl transition-colors"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
