@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "setup": "prisma generate && prisma db push",
+    "dev:full": "redis-cli ping >/dev/null 2>&1 || redis-server --daemonize yes; npm run setup && next dev",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",

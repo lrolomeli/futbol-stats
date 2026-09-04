@@ -66,6 +66,31 @@ La app estara disponible en `http://localhost:3000`.
 
 > **Nota**: Si PostgreSQL ya corre en el puerto 5432, el Docker mapea el DB al puerto 5433. En ese caso usa el workflow de desarrollo local.
 
+### Nativo en Linux (requisitos: Node.js, PostgreSQL, Redis)
+
+```bash
+# 1. Instalar PostgreSQL y Redis
+sudo apt install postgresql redis-server
+
+# 2. Crear la base de datos y el usuario (postgres debe estar corriendo)
+sudo -u postgres psql -c "CREATE USER bluelock WITH PASSWORD 'bluelock123';"
+sudo -u postgres psql -c "CREATE DATABASE bluelockstats OWNER bluelock;"
+
+# 3. Instalar dependencias y configurar el entorno
+npm install
+cp .env.example .env   # usa localhost:5432 y localhost:6379
+
+# 4. Generar el cliente Prisma y sincronizar el esquema
+npm run setup
+
+# 5. Iniciar en modo desarrollo (con hot reload)
+npm run dev
+```
+
+La app estara en `http://localhost:3000`.
+
+> `npm run dev:full` hace todo en un solo comando: asegura que Redis corra, sincroniza el esquema y levanta el servidor de desarrollo.
+
 ### Desarrollo local (recomendado)
 
 ```bash
@@ -105,16 +130,24 @@ Este es el workflow mas rapido: la DB y Redis corren en Docker, la app corre loc
 Copiar `.env.example` a `.env` y ajustar:
 
 ```env
-DATABASE_URL=postgresql://bluelock:bluelock123@localhost:5433/bluelockstats
+# Nativo en Linux (PostgreSQL local en puerto estandar)
+DATABASE_URL=postgresql://bluelock:bluelock123@localhost:5432/bluelockstats
+
+# Con Docker (el compose mapea el contenedor 5432 al host en 5433)
+# DATABASE_URL=postgresql://bluelock:bluelock123@localhost:5433/bluelockstats
+
 REDIS_URL=redis://localhost:6379
 ```
 
-> El Docker mapea PostgreSQL del contenedor (5432) al host en el puerto **5433**, asi que apunta `DATABASE_URL` a `localhost:5433`. Si usas una instancia de PostgreSQL local en el puerto 5432, cambia el puerto en `.env` a `5432` y usa esas credenciales (la imagen Docker no corre en 5432).
+> **Nativo**: PostgreSQL corre en el puerto estandar `5432`.
+> **Con Docker**: el compose mapea el PostgreSQL del contenedor (5432) al host en el puerto **5433**, asi que apunta `DATABASE_URL` a `localhost:5433`.
 
 ### Comandos utiles
 
 ```bash
+npm run setup        # Configuracion inicial: prisma generate + db push
 npm run dev          # Servidor de desarrollo con hot reload
+npm run dev:full     # Redis + setup + servidor de desarrollo (todo en uno)
 npm run build        # Build de produccion
 npm start            # Iniciar en modo produccion
 npm run lint         # Linting
