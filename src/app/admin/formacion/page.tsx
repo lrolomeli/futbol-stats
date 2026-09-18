@@ -6,6 +6,8 @@ import PincodeModal from '@/components/PincodeModal'
 import { POSICIONES, MINUTOS, FORMACION_VACIA } from '@/lib/formacion'
 import type { ClavePosicion, FormacionData } from '@/lib/formacion'
 import { colorDeJugador } from '@/lib/colores'
+import { descargarImagenFormacion } from '@/lib/imagenFormacion'
+import type { TiempoImagen } from '@/lib/imagenFormacion'
 
 interface Jugador {
   id: number
@@ -25,16 +27,25 @@ export default function FormacionPage() {
   const [celdaAbierta, setCeldaAbierta] = useState<CeldaSeleccionada | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [cargando, setCargando] = useState(true)
-  const [guardando, setGuardando] = useState(false)
   const [mensaje, setMensaje] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null)
   const [editando, setEditando] = useState(false)
+  const [descargando, setDescargando] = useState<TiempoImagen | null>(null)
   const [pincode, setPincode] = useState<string | null>(null)
   const [pincodeAbierto, setPincodeAbierto] = useState(false)
 
+  const GUARDAR_DESPUES_MS = 600
+
   useEffect(() => {
+    const guardadoPincode = localStorage.getItem('formacion_pincode')
+    if (guardadoPincode) {
+      setPincode(guardadoPincode)
+      setEditando(true)
+    }
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current)
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
     }
   }, [])
 
@@ -105,6 +116,27 @@ export default function FormacionPage() {
     return mapa
   }, [datos])
 
+  const programarAutoguardado = (nuevosDatos: FormacionData) => {
+    if (!pincode) return
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    autosaveTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/formacion', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ datos: nuevosDatos, pincode })
+        })
+        if (!res.ok) {
+          const error = await res.json().catch(() => null)
+          throw new Error(error?.error || 'Error al guardar')
+        }
+        mostrarMensaje('exito', 'Guardado')
+      } catch (e: any) {
+        mostrarMensaje('error', e.message || 'No se pudo guardar la formación')
+      }
+    }, GUARDAR_DESPUES_MS)
+  }
+
   const agregarJugador = (jugadorId: number) => {
     if (!datos || !celdaAbierta) return
     const { posicion, minuto } = celdaAbierta
@@ -114,44 +146,42 @@ export default function FormacionPage() {
       mostrarMensaje('error', 'Ese jugador ya está asignado en este minuto')
       return
     }
-    setDatos(prev => prev ? {
-      ...prev,
-      [posicion]: { ...prev[posicion], [minuto]: [...prev[posicion][minuto], jugadorId] }
-    } : null)
+    const nuevosDatos = {
+      ...datos,
+      [posicion]: { ...datos[posicion], [minuto]: [jugadorId] }
+    }
+    setDatos(nuevosDatos)
+    programarAutoguardado(nuevosDatos)
+    setCeldaAbierta(null)
   }
 
   const quitarJugador = (posicion: ClavePosicion, minuto: string, jugadorId: number) => {
-    setDatos(prev => prev ? {
-      ...prev,
-      [posicion]: { ...prev[posicion], [minuto]: prev[posicion][minuto].filter(id => id !== jugadorId) }
-    } : null)
+    if (!datos) return
+    const nuevosDatos = {
+      ...datos,
+      [posicion]: { ...datos[posicion], [minuto]: datos[posicion][minuto].filter(id => id !== jugadorId) }
+    }
+    setDatos(nuevosDatos)
+    programarAutoguardado(nuevosDatos)
   }
 
-  const guardar = async () => {
-    if (!datos || !editando || !pincode) return
-    setGuardando(true)
-    setMensaje(null)
+  const descargarImagen = async (tiempo: TiempoImagen) => {
+    if (!datos || descargando) return
+    setDescargando(tiempo)
     try {
-      const res = await fetch('/api/formacion', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ datos, pincode })
-      })
-      if (!res.ok) {
-        const error = await res.json().catch(() => null)
-        throw new Error(error?.error || 'Error al guardar')
-      }
-      mostrarMensaje('exito', 'Formación guardada')
+      await descargarImagenFormacion(tiempo, datos, jugadorPorId)
     } catch (e: any) {
-      mostrarMensaje('error', e.message || 'No se pudo guardar la formación')
+      mostrarMensaje('error', e.message || 'No se pudo generar la imagen')
     } finally {
-      setGuardando(false)
+      setDescargando(null)
     }
   }
 
   const limpiarTodo = () => {
     if (!confirm('¿Vaciar toda la formación?')) return
-    setDatos(FORMACION_VACIA())
+    const nuevosDatos = FORMACION_VACIA()
+    setDatos(nuevosDatos)
+    programarAutoguardado(nuevosDatos)
   }
 
   const posicionLabel = (key: string) =>
@@ -172,7 +202,7 @@ export default function FormacionPage() {
     <div className="min-h-screen bg-gray-900">
       <Navbar titulo="Formación" mostrarVolver hrefVolver="/admin" />
 
-      <div className="max-w-lg mx-auto p-4 space-y-4">
+      <div className="w-full mx-auto p-4 space-y-4">
         {mensaje && (
           <div className={`p-3 rounded-lg text-center font-medium ${
             mensaje.tipo === 'exito'
@@ -215,7 +245,7 @@ export default function FormacionPage() {
         <div className="bg-gray-800 p-4 rounded-xl">
           <p className="text-gray-400 text-xs mb-3">
             {editando
-              ? 'Tocá cualquier celda para agregar jugadores. Un jugador no puede repetirse en el mismo minuto.'
+              ? 'Tocá cualquier celda para agregar jugadores. Un jugador por celda y no puede repetirse en el mismo minuto.'
               : 'Vista de la formación. Tocá "Editar" para modificarla.'}
           </p>
 
@@ -234,7 +264,7 @@ export default function FormacionPage() {
 
               {POSICIONES.map(({ key, label, numero }) => (
                 <Fragment key={key}>
-                  <div className="flex items-center justify-center">
+                  <div className="flex flex-col items-center justify-center gap-1">
                     <button
                       onClick={() => mostrarToast(label)}
                       className="w-7 h-7 rounded-full bg-gray-700 hover:bg-primary-600 text-white text-xs font-bold transition-colors"
@@ -242,6 +272,7 @@ export default function FormacionPage() {
                     >
                       {numero}
                     </button>
+                    <span className="text-gray-400 text-[8px] font-medium text-center leading-tight">{label}</span>
                   </div>
                   {MINUTOS.map(minuto => (
                     <div
@@ -258,10 +289,10 @@ export default function FormacionPage() {
                           const jugador = jugadorPorId.get(id)
                           if (!jugador) return null
                           return (
-                            <div key={id} className="flex items-center gap-0.5 bg-gray-800 rounded px-1 py-0.5 min-w-0 border-l-2"
+                            <div key={id} className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 min-w-0 w-full border-l-2"
                               style={{ borderLeftColor: colorDeJugador(id) }}>
-                              <span className="font-bold text-[9px] shrink-0" style={{ color: colorDeJugador(id) }}>#{jugador.numero}</span>
-                              <span className="text-white text-[9px] truncate flex-1 min-w-0 leading-tight">{jugador.nombre}</span>
+                              <span className="font-bold text-[10px] shrink-0" style={{ color: colorDeJugador(id) }}>#{jugador.numero}</span>
+                              <span className="text-white text-xs font-medium truncate flex-1 min-w-0 leading-tight">{jugador.nombre}</span>
                               {editando && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); quitarJugador(key, String(minuto), id) }}
@@ -281,19 +312,24 @@ export default function FormacionPage() {
               ))}
             </div>
           )}
-        </div>
 
-        <button
-          onClick={guardar}
-          disabled={!editando || guardando}
-          className={`w-full font-semibold py-3 rounded-xl transition-colors ${
-            editando
-              ? 'bg-primary-600 hover:bg-primary-500 disabled:bg-gray-600 text-white'
-              : 'bg-gray-700 text-gray-500'
-          }`}
-        >
-          {guardando ? 'Guardando...' : editando ? 'Guardar Formación' : '🔒 Desbloqueá para guardar'}
-        </button>
+          <div className="grid grid-cols-2 gap-2 mt-4">
+            <button
+              onClick={() => descargarImagen(1)}
+              disabled={descargando !== null}
+              className="bg-primary-600 hover:bg-primary-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
+            >
+              {descargando === 1 ? 'Generando...' : '⬇ Descargar 1er Tiempo'}
+            </button>
+            <button
+              onClick={() => descargarImagen(2)}
+              disabled={descargando !== null}
+              className="bg-primary-600 hover:bg-primary-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
+            >
+              {descargando === 2 ? 'Generando...' : '⬇ Descargar 2do Tiempo'}
+            </button>
+          </div>
+        </div>
       </div>
 
       {celdaAbierta && (
@@ -305,6 +341,7 @@ export default function FormacionPage() {
           minuto={celdaAbierta.minuto}
           idsEnMinuto={idsEnMinuto.get(celdaAbierta.minuto) ?? new Set()}
           onAgregar={agregarJugador}
+          onQuitar={quitarJugador}
           onCerrar={() => setCeldaAbierta(null)}
           posicionLabel={posicionLabel}
         />
@@ -321,6 +358,7 @@ export default function FormacionPage() {
           titulo="Editar Formación"
           descripcion="Solo el administrador puede modificar la formación."
           onConfirm={(pin) => {
+            localStorage.setItem('formacion_pincode', pin)
             setPincode(pin)
             setEditando(true)
           }}
@@ -339,6 +377,7 @@ function CeldaModal({
   minuto,
   idsEnMinuto,
   onAgregar,
+  onQuitar,
   onCerrar,
   posicionLabel
 }: {
@@ -349,6 +388,7 @@ function CeldaModal({
   minuto: string
   idsEnMinuto: Set<number>
   onAgregar: (jugadorId: number) => void
+  onQuitar: (posicion: ClavePosicion, minuto: string, jugadorId: number) => void
   onCerrar: () => void
   posicionLabel: (key: string) => string
 }) {
@@ -383,6 +423,13 @@ function CeldaModal({
                 </div>
                 <span className="text-white font-medium">{jugador.nombre}</span>
                 <span className="text-primary-400 text-xs ml-auto">En esta celda</span>
+                <button
+                  onClick={() => onQuitar(posicion, minuto, id)}
+                  className="text-gray-500 hover:text-red-400 text-sm font-bold shrink-0"
+                  title="Quitar de esta celda"
+                >
+                  ✕
+                </button>
               </div>
             )
           })}
@@ -391,7 +438,9 @@ function CeldaModal({
           )}
         </div>
 
-        <h4 className="text-white font-semibold mb-2">Agregar jugadores</h4>
+        <h4 className="text-white font-semibold mb-2">
+          {idsEnCelda.length > 0 ? 'Reemplazar jugador' : 'Agregar jugador'}
+        </h4>
         <div className="space-y-2">
           {jugadores
             .filter(j => !idsEnCelda.includes(j.id))

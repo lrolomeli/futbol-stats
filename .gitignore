@@ -36,3 +36,9 @@ prisma/migrations/
 
 # docker
 *.log
+
+# python virtualenv del script futform
+futform/fut/
+# imagenes generadas por el script futform
+futform/tiempo1.jpg
+futform/tiempo2.jpg

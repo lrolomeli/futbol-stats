@@ -32,7 +32,7 @@ Sistema de estadisticas de futbol 7 con registro en tiempo real y evaluacion sub
 - **Historial**: estadisticas historicas por jugador, metricas derivadas (goles/partido, efectividad, etc.), radar chart con seleccion de jugadores, graficos de barras, tabla comparativa.
 - **Tab Individual**: datos crudos por partido + totales acumulados + promedios por partido, por cada jugador.
 - **Grafico de evolucion**: linea por jugador que muestra como cambia una estadistica a lo largo de sus partidos.
-- **Formacion**: grilla unica y persistente de 7 posiciones (portero, defensas, laterales, centrocampista, delantero) x 4 minutos (0, 10, 20, 30). Cada celda admite multiples jugadores, con colores por jugador para identificarlos facilmente. No se admiten repetidos dentro de la misma columna (minuto). La edicion completa se desbloquea con el pincode de administrador una sola vez.
+- **Formacion**: grilla unica y persistente de 7 posiciones (portero, defensas, laterales, centrocampista, delantero) x 4 minutos (0, 10, 20, 30). Un solo jugador por celda, con colores por jugador para identificarlos facilmente. No se admiten repetidos dentro de la misma columna (minuto). Autosave: cada cambio se guarda solo (debounce ~600ms). La edicion se desbloquea con el pincode de administrador una sola vez y se conserva en `localStorage`. Desde la misma vista se descargan las imagenes de alineacion del 1er y 2do tiempo (replican el script Python `futform/futform.py`): `Min 0/10` = 1er tiempo, `Min 20/30` = 2do tiempo.
 - **3 vistas por rol**: admin (`/admin`), operador (`/partido/[id]`), juez (`/evaluacion/[partidoId]/[token]`).
 - **Docker Compose**: despliegue con un solo comando.
 
@@ -90,6 +90,30 @@ npm run dev
 La app estara en `http://localhost:3000`.
 
 > `npm run dev:full` hace todo en un solo comando: asegura que Redis corra, sincroniza el esquema y levanta el servidor de desarrollo.
+
+### WSL2 (nativo, sin Docker ni systemd)
+
+Si trabajas en WSL2 sin systemd activo, Docker no esta disponible y `systemctl` no funciona. Usa los scripts SysV y servicios nativos:
+
+```bash
+# 1. Levantar PostgreSQL y Redis (no persisten entre reinicios)
+sudo service postgresql start
+sudo service redis-server start
+
+# 2. Crear base de datos y usuario (una sola vez, si no existen)
+sudo -u postgres psql -c "CREATE USER bluelock WITH PASSWORD 'bluelock123';"
+sudo -u postgres psql -c "CREATE DATABASE bluelockstats OWNER bluelock;"
+
+# 3. Instalar dependencias y configurar entorno
+npm install
+cp .env.example .env   # localhost:5432 y localhost:6379
+
+# 4. Sincronizar esquema y levantar el dev server
+npm run setup
+npm run dev
+```
+
+> Alternativa para el arranque de PostgreSQL: `sudo pg_ctlcluster 18 main start`.
 
 ### Desarrollo local (recomendado)
 

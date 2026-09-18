@@ -88,6 +88,9 @@ async function validarDatos(datos: DatosFormacion) {
       if (!Array.isArray(ids) || ids.some(id => !Number.isInteger(id))) {
         return { ok: false, error: `Lista inválida en ${posicion} minuto ${minuto}` }
       }
+      if (ids.length > 1) {
+        return { ok: false, error: `Solo un jugador por celda (${posicion} minuto ${minuto})` }
+      }
       usadosPorMinuto[minuto] = usadosPorMinuto[minuto] ?? new Set()
       for (const id of ids) {
         if (usadosPorMinuto[minuto].has(id)) {
