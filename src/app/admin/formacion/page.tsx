@@ -266,9 +266,9 @@ export default function FormacionPage() {
 
                   <div className="grid grid-cols-[auto_repeat(2,minmax(0,1fr))] gap-1">
                     <div></div>
-                    {minutos.map(minuto => (
-                      <div key={minuto} className="text-center">
-                        <span className="text-primary-400 text-[10px] font-semibold">Min {minuto}</span>
+                    {['Min 0', 'Min 10'].map(label => (
+                      <div key={label} className="text-center">
+                        <span className="text-primary-400 text-[10px] font-semibold">{label}</span>
                       </div>
                     ))}
 
