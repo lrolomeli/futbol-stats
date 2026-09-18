@@ -38,7 +38,7 @@ export default function FormacionPage() {
   const GUARDAR_DESPUES_MS = 600
 
   useEffect(() => {
-    const guardadoPincode = localStorage.getItem('formacion_pincode')
+    const guardadoPincode = sessionStorage.getItem('formacion_pincode')
     if (guardadoPincode) {
       setPincode(guardadoPincode)
       setEditando(true)
@@ -202,7 +202,7 @@ export default function FormacionPage() {
     <div className="min-h-screen bg-gray-900">
       <Navbar titulo="Formación" mostrarVolver hrefVolver="/admin" />
 
-      <div className="w-full mx-auto p-4 space-y-4">
+      <div className="w-full mx-auto p-4 space-y-4 overflow-x-hidden">
         {mensaje && (
           <div className={`p-3 rounded-lg text-center font-medium ${
             mensaje.tipo === 'exito'
@@ -254,81 +254,85 @@ export default function FormacionPage() {
               No hay jugadores registrados. <a href="/admin/jugadores" className="text-primary-400 underline">Agregalos primero</a>.
             </p>
           ) : (
-            <div className="grid grid-cols-[auto_repeat(4,1fr)] gap-1">
-              <div></div>
-              {MINUTOS.map(minuto => (
-                <div key={minuto} className="text-center">
-                  <span className="text-primary-400 text-[10px] font-semibold">Min {minuto}</span>
+            <>
+              {[
+                { label: '1er Tiempo', tiempo: 1 as const, minutos: MINUTOS.slice(0, 2) },
+                { label: '2do Tiempo', tiempo: 2 as const, minutos: MINUTOS.slice(2) }
+              ].map(({ label: titulo, tiempo, minutos }) => (
+                <div key={tiempo} className="mb-4 last:mb-0">
+                  <div className="text-center mb-2">
+                    <span className="text-gray-300 text-xs font-semibold">{titulo}</span>
+                  </div>
+
+                  <div className="grid grid-cols-[auto_repeat(2,minmax(0,1fr))] gap-1">
+                    <div></div>
+                    {minutos.map(minuto => (
+                      <div key={minuto} className="text-center">
+                        <span className="text-primary-400 text-[10px] font-semibold">Min {minuto}</span>
+                      </div>
+                    ))}
+
+                    {POSICIONES.map(({ key, label, numero }) => (
+                      <Fragment key={key}>
+                        <div className="flex flex-col items-center justify-center gap-1">
+                          <button
+                            onClick={() => mostrarToast(label)}
+                            className="w-7 h-7 rounded-full bg-gray-700 hover:bg-primary-600 text-white text-xs font-bold transition-colors"
+                            title={label}
+                          >
+                            {numero}
+                          </button>
+                          <span className="text-gray-400 text-[8px] font-medium text-center leading-tight">{label}</span>
+                        </div>
+                        {minutos.map(minuto => (
+                          <div
+                            key={minuto}
+                            onClick={editando ? () => setCeldaAbierta({ posicion: key, minuto: String(minuto) }) : undefined}
+                            className={`min-h-[44px] bg-gray-700/60 border border-gray-600/60 rounded-md p-1 flex flex-col gap-0.5 transition-colors ${
+                              editando ? 'cursor-pointer hover:border-primary-500/60' : ''
+                            }`}
+                          >
+                            {datos[key][String(minuto)].length === 0 ? (
+                              <div className="flex-1 flex items-center justify-center text-gray-500 text-sm select-none">+</div>
+                            ) : (
+                              datos[key][String(minuto)].map(id => {
+                                const jugador = jugadorPorId.get(id)
+                                if (!jugador) return null
+                                return (
+                                  <div key={id} className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 min-w-0 w-full border-l-2"
+                                    style={{ borderLeftColor: colorDeJugador(id) }}>
+                                    <span className="font-bold text-[10px] shrink-0" style={{ color: colorDeJugador(id) }}>#{jugador.numero}</span>
+                                    <span className="text-white text-xs font-medium truncate flex-1 min-w-0 leading-tight">{jugador.nombre}</span>
+                                    {editando && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); quitarJugador(key, String(minuto), id) }}
+                                        className="text-gray-500 hover:text-red-400 text-[9px] font-bold px-0.5 shrink-0"
+                                        title="Quitar"
+                                      >
+                                        ✕
+                                      </button>
+                                    )}
+                                  </div>
+                                )
+                              })
+                            )}
+                          </div>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => descargarImagen(tiempo)}
+                    disabled={descargando !== null}
+                    className="w-full mt-3 bg-primary-600 hover:bg-primary-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
+                  >
+                    {descargando === tiempo ? 'Generando...' : '⬇ Descargar Alineación'}
+                  </button>
                 </div>
               ))}
-
-              {POSICIONES.map(({ key, label, numero }) => (
-                <Fragment key={key}>
-                  <div className="flex flex-col items-center justify-center gap-1">
-                    <button
-                      onClick={() => mostrarToast(label)}
-                      className="w-7 h-7 rounded-full bg-gray-700 hover:bg-primary-600 text-white text-xs font-bold transition-colors"
-                      title={label}
-                    >
-                      {numero}
-                    </button>
-                    <span className="text-gray-400 text-[8px] font-medium text-center leading-tight">{label}</span>
-                  </div>
-                  {MINUTOS.map(minuto => (
-                    <div
-                      key={minuto}
-                      onClick={editando ? () => setCeldaAbierta({ posicion: key, minuto: String(minuto) }) : undefined}
-                      className={`min-h-[44px] bg-gray-700/60 border border-gray-600/60 rounded-md p-1 flex flex-col gap-0.5 transition-colors ${
-                        editando ? 'cursor-pointer hover:border-primary-500/60' : ''
-                      }`}
-                    >
-                      {datos[key][String(minuto)].length === 0 ? (
-                        <div className="flex-1 flex items-center justify-center text-gray-500 text-sm select-none">+</div>
-                      ) : (
-                        datos[key][String(minuto)].map(id => {
-                          const jugador = jugadorPorId.get(id)
-                          if (!jugador) return null
-                          return (
-                            <div key={id} className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 min-w-0 w-full border-l-2"
-                              style={{ borderLeftColor: colorDeJugador(id) }}>
-                              <span className="font-bold text-[10px] shrink-0" style={{ color: colorDeJugador(id) }}>#{jugador.numero}</span>
-                              <span className="text-white text-xs font-medium truncate flex-1 min-w-0 leading-tight">{jugador.nombre}</span>
-                              {editando && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); quitarJugador(key, String(minuto), id) }}
-                                  className="text-gray-500 hover:text-red-400 text-[9px] font-bold px-0.5 shrink-0"
-                                  title="Quitar"
-                                >
-                                  ✕
-                                </button>
-                              )}
-                            </div>
-                          )
-                        })
-                      )}
-                    </div>
-                  ))}
-                </Fragment>
-              ))}
-            </div>
+            </>
           )}
-
-          <div className="grid grid-cols-2 gap-2 mt-4">
-            <button
-              onClick={() => descargarImagen(1)}
-              disabled={descargando !== null}
-              className="bg-primary-600 hover:bg-primary-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
-            >
-              {descargando === 1 ? 'Generando...' : '⬇ Descargar 1er Tiempo'}
-            </button>
-            <button
-              onClick={() => descargarImagen(2)}
-              disabled={descargando !== null}
-              className="bg-primary-600 hover:bg-primary-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
-            >
-              {descargando === 2 ? 'Generando...' : '⬇ Descargar 2do Tiempo'}
-            </button>
-          </div>
         </div>
       </div>
 
@@ -358,7 +362,7 @@ export default function FormacionPage() {
           titulo="Editar Formación"
           descripcion="Solo el administrador puede modificar la formación."
           onConfirm={(pin) => {
-            localStorage.setItem('formacion_pincode', pin)
+            sessionStorage.setItem('formacion_pincode', pin)
             setPincode(pin)
             setEditando(true)
           }}
