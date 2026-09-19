@@ -26,3 +26,27 @@ export const FORMACION_VACIA = (): FormacionData => {
   }
   return vacia
 }
+
+export function extraerJugadoresDeFormacion(datos: FormacionData): number[] {
+  const ids = new Set<number>()
+  for (const celdas of Object.values(datos)) {
+    for (const jugadores of Object.values(celdas)) {
+      for (const id of jugadores) {
+        ids.add(id)
+      }
+    }
+  }
+  return [...ids]
+}
+
+export function extraerJugadoresPorMinuto(datos: FormacionData, minuto: string): number[] {
+  const ids: number[] = []
+  for (const posicion of POSICIONES) {
+    if (posicion.key === 'portero') continue
+    const celda = datos[posicion.key]?.[minuto]
+    if (celda && celda.length > 0) {
+      ids.push(celda[0])
+    }
+  }
+  return ids
+}

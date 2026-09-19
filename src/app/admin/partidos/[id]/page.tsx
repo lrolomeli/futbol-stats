@@ -28,7 +28,6 @@ export default function PartidoAdminPage() {
   const [partido, setPartido] = useState<Partido | null>(null)
   const [plantelAbierto, setPlantelAbierto] = useState(false)
   const [todosJugadores, setTodosJugadores] = useState<Jugador[]>([])
-  const [confirmarEstado, setConfirmarEstado] = useState<'en_curso' | 'finalizado' | null>(null)
   const [confirmarEliminar, setConfirmarEliminar] = useState(false)
   const [errorEliminar, setErrorEliminar] = useState(false)
 
@@ -135,7 +134,7 @@ export default function PartidoAdminPage() {
           <div className="grid grid-cols-2 gap-2">
             {partido.estado === 'pendiente' && (
               <button
-                onClick={() => setConfirmarEstado('en_curso')}
+                onClick={() => cambiarEstado('en_curso')}
                 className="bg-green-600 hover:bg-green-500 text-white font-semibold py-3 rounded-lg transition-colors"
               >
                 Iniciar Partido
@@ -143,7 +142,7 @@ export default function PartidoAdminPage() {
             )}
             {partido.estado === 'en_curso' && (
               <button
-                onClick={() => setConfirmarEstado('finalizado')}
+                onClick={() => cambiarEstado('finalizado')}
                 className="bg-red-600 hover:bg-red-500 text-white font-semibold py-3 rounded-lg transition-colors"
               >
                 Finalizar
@@ -305,18 +304,6 @@ export default function PartidoAdminPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Modal de pincode para cambiar estado */}
-      {confirmarEstado && (
-        <PincodeModal
-          titulo={confirmarEstado === 'en_curso' ? 'Iniciar Partido' : 'Finalizar Partido'}
-          descripcion={confirmarEstado === 'en_curso'
-            ? 'Solo el administrador puede iniciar el partido.'
-            : 'Solo el administrador puede finalizar el partido.'}
-          onConfirm={() => cambiarEstado(confirmarEstado)}
-          onCancel={() => setConfirmarEstado(null)}
-        />
       )}
 
       {/* Modal de pincode para eliminar partido */}

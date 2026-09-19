@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import JudgeScorePad from '@/components/JudgeScorePad'
+import { extraerJugadoresDeFormacion, extraerJugadoresPorMinuto, FORMACION_VACIA } from '@/lib/formacion'
+import type { FormacionData } from '@/lib/formacion'
 
 interface Jugador {
   id: number
@@ -21,11 +22,6 @@ interface Stats {
   tirosAfuera: number
 }
 
-interface Evaluacion {
-  jugadorId: number
-  puntuacion: number
-}
-
 interface PartidoInfo {
   id: number
   rival: string
@@ -35,8 +31,6 @@ interface PartidoInfo {
   jugadoresEnCancha: { jugador: Jugador; enCancha: boolean }[]
   statsObjetivas: (Stats & { jugadorId: number; jugador: Jugador })[]
 }
-
-type Fase = 'seleccion' | 'objetiva' | 'subjetiva'
 
 const STAT_CONFIG: { key: keyof Stats; label: string }[] = [
   { key: 'goles', label: 'Goles' },
@@ -48,74 +42,95 @@ const STAT_CONFIG: { key: keyof Stats; label: string }[] = [
   { key: 'tirosAfuera', label: 'Tiros afuera' },
 ]
 
+const CUARTOS = [
+  { minuto: '0', label: '1er Tiempo - 1ra Mitad' },
+  { minuto: '10', label: '1er Tiempo - 2da Mitad' },
+  { minuto: '20', label: '2do Tiempo - 1ra Mitad' },
+  { minuto: '30', label: '2do Tiempo - 2da Mitad' },
+]
+
 export default function EvaluacionPage() {
   const params = useParams()
   const [partido, setPartido] = useState<PartidoInfo | null>(null)
   const [jugadoresAsignados, setJugadoresAsignados] = useState<{ jugador: Jugador }[]>([])
-  const [jugadoresDisponibles, setJugadoresDisponibles] = useState<Jugador[]>([])
-  const [tieneAsignaciones, setTieneAsignaciones] = useState(false)
-  const [seleccionados, setSeleccionados] = useState<number[]>([])
-  const [evaluaciones, setEvaluaciones] = useState<Record<number, number>>({})
-  const [enviando, setEnviando] = useState(false)
-  const [enviado, setEnviado] = useState(false)
+  const [formacion, setFormacion] = useState<FormacionData | null>(null)
+  const [cuartoActual, setCuartoActual] = useState(0)
+  const [jugadorEditando, setJugadorEditando] = useState<Jugador | null>(null)
   const [error, setError] = useState('')
-  const [fase, setFase] = useState<Fase>('seleccion')
-  const [modalStat, setModalStat] = useState<{ jugadorId: number; jugadorNombre: string; jugadorNumero: number; stat: keyof Stats; label: string; valor: number } | null>(null)
-  const [cambiando, setCambiando] = useState(false)
-  const [jugadorSeleccionado, setJugadorSeleccionado] = useState<number | null>(null)
+  const [cargando, setCargando] = useState(true)
 
-  const cargarDatos = async () => {
+  const cargarDatos = useCallback(async () => {
     const res = await fetch(`/api/evaluacion/${params.partidoId}/${params.juezToken}`)
     if (!res.ok) {
       setError('Link inválido o partido no encontrado')
+      setCargando(false)
       return
     }
     const data = await res.json()
     setPartido(data.partido)
     setJugadoresAsignados(data.jugadoresAsignados || [])
-    setJugadoresDisponibles(data.jugadoresDisponibles || [])
-    setTieneAsignaciones(data.tieneAsignaciones)
-    const evs: Record<number, number> = {}
-    data.evaluaciones.forEach((ev: Evaluacion) => {
-      evs[ev.jugadorId] = ev.puntuacion
-    })
-    setEvaluaciones(evs)
 
-    if (data.tieneAsignaciones) {
-      setFase('objetiva')
+    try {
+      const formacionRes = await fetch('/api/formacion')
+      const formacionData = await formacionRes.json()
+      const datos: FormacionData = formacionData.datos ?? FORMACION_VACIA()
+      setFormacion(datos)
+
+      if (data.tieneAsignaciones) {
+        setCargando(false)
+        return
+      }
+
+      const idsFormacion = extraerJugadoresDeFormacion(datos)
+
+      const idsJugadoresPartido = data.partido.jugadoresEnCancha.map(
+        (jc: { jugador: Jugador }) => jc.jugador.id
+      )
+      const idsAAsignar = idsFormacion.filter(id => idsJugadoresPartido.includes(id))
+
+      if (idsAAsignar.length === 0) {
+        setError('No hay jugadores en la formación para asignar')
+        setCargando(false)
+        return
+      }
+
+      const asignarRes = await fetch(`/api/evaluacion/${params.partidoId}/${params.juezToken}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'asignar', jugadorIds: idsAAsignar })
+      })
+
+      if (!asignarRes.ok) {
+        const errData = await asignarRes.json()
+        setError(errData.error || 'Error al asignar jugadores')
+        setCargando(false)
+        return
+      }
+
+      const refetchRes = await fetch(`/api/evaluacion/${params.partidoId}/${params.juezToken}`)
+      const refetchData = await refetchRes.json()
+      setPartido(refetchData.partido)
+      setJugadoresAsignados(refetchData.jugadoresAsignados || [])
+    } catch {
+      setError('Error al cargar la formación')
+    } finally {
+      setCargando(false)
     }
-  }
+  }, [params.partidoId, params.juezToken])
 
   useEffect(() => {
     cargarDatos()
-  }, [params.partidoId, params.juezToken])
-
-  const toggleSeleccion = (id: number) => {
-    setSeleccionados(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    )
-  }
-
-  const confirmarAsignacion = async () => {
-    if (seleccionados.length === 0) {
-      setError('Selecciona al menos un jugador')
-      return
-    }
-    setError('')
-    const res = await fetch(`/api/evaluacion/${params.partidoId}/${params.juezToken}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'asignar', jugadorIds: seleccionados })
-    })
-    if (!res.ok) {
-      const data = await res.json()
-      setError(data.error || 'Error al asignar jugadores')
-      return
-    }
-    await cargarDatos()
-  }
+  }, [cargarDatos])
 
   const jugadoresEnCancha = jugadoresAsignados.map(a => a.jugador)
+
+  const jugadoresDelCuarto = useCallback((): Jugador[] => {
+    if (!formacion) return []
+    const ids = extraerJugadoresPorMinuto(formacion, CUARTOS[cuartoActual].minuto)
+    return ids
+      .map(id => jugadoresEnCancha.find(j => j.id === id))
+      .filter((j): j is Jugador => !!j)
+  }, [formacion, cuartoActual, jugadoresEnCancha])
 
   const handleStatChange = useCallback(async (jugadorId: number, stat: keyof Stats, incremento: number) => {
     await fetch(`/api/partidos/${params.partidoId}/stats`, {
@@ -136,54 +151,18 @@ export default function EvaluacionPage() {
     })
   }, [params.partidoId])
 
-  const handleCambiarJugador = async (jugadorSalienteId: number, jugadorEntranteId: number) => {
-    await fetch(`/api/partidos/${params.partidoId}/cambiar`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jugadorSalienteId, jugadorEntranteId })
-    })
-    await cargarPartido()
-    setCambiando(false)
-    setJugadorSeleccionado(null)
-  }
-
-  const cargarPartido = async () => {
-    const res = await fetch(`/api/evaluacion/${params.partidoId}/${params.juezToken}`)
-    const data = await res.json()
-    setPartido(data.partido)
-    setJugadoresAsignados(data.jugadoresAsignados || [])
-  }
-
-  const handlePuntuar = (jugadorId: number, puntuacion: number) => {
-    setEvaluaciones(prev => ({ ...prev, [jugadorId]: puntuacion }))
-  }
-
-  const handleSubmit = async () => {
-    const evaluacionesArray = jugadoresEnCancha.map(j => ({
-      jugadorId: j.id,
-      puntuacion: evaluaciones[j.id] || 0
-    }))
-    const sinCalificar = evaluacionesArray.filter(e => e.puntuacion === 0)
-    if (sinCalificar.length > 0) {
-      setError(`Faltan ${sinCalificar.length} jugador(es) por calificar`)
-      return
+  const statsParaJugador = useCallback((jugadorId: number): Stats => {
+    const stats = partido?.statsObjetivas.find(s => s.jugadorId === jugadorId)
+    return {
+      goles: stats?.goles ?? 0,
+      asistencias: stats?.asistencias ?? 0,
+      recuperaciones: stats?.recuperaciones ?? 0,
+      tirosAPorteria: stats?.tirosAPorteria ?? 0,
+      faltas: stats?.faltas ?? 0,
+      balonesPerdidos: stats?.balonesPerdidos ?? 0,
+      tirosAfuera: stats?.tirosAfuera ?? 0,
     }
-    setEnviando(true)
-    setError('')
-    try {
-      const res = await fetch(`/api/evaluacion/${params.partidoId}/${params.juezToken}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'guardar', evaluaciones: evaluacionesArray })
-      })
-      if (res.ok) setEnviado(true)
-      else setError('Error al enviar la evaluación')
-    } catch {
-      setError('Error de conexión')
-    } finally {
-      setEnviando(false)
-    }
-  }
+  }, [partido])
 
   if (error && !partido) {
     return (
@@ -196,23 +175,12 @@ export default function EvaluacionPage() {
     )
   }
 
-  if (!partido) {
+  if (cargando || !partido) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <p className="text-gray-400">Cargando evaluación...</p>
-      </div>
-    )
-  }
-
-  if (enviado) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
         <div className="text-center">
-          <div className="text-6xl mb-4">✅</div>
-          <h2 className="text-white text-2xl font-bold mb-2">¡Evaluación Enviada!</h2>
-          <p className="text-gray-400">
-            Gracias por tu evaluación del partido BlueLock vs {partido.rival}
-          </p>
+          <p className="text-gray-400">Cargando evaluación...</p>
+          <p className="text-gray-500 text-sm mt-2">Asignando jugadores desde la formación</p>
         </div>
       </div>
     )
@@ -227,328 +195,155 @@ export default function EvaluacionPage() {
     { goles: 0, faltas: 0, recuperaciones: 0 }
   )
 
-  const completados = Object.values(evaluaciones).filter(v => v > 0).length
-  const total = jugadoresEnCancha.length
+  const statsJugadorEditando = jugadorEditando ? statsParaJugador(jugadorEditando.id) : null
 
   return (
     <div className="min-h-screen bg-gray-900 pb-24">
       {/* Header */}
       <div className="bg-gray-800 border-b border-gray-700 sticky top-0 z-40">
         <div className="max-w-4xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-white font-semibold">BlueLock vs {partido.rival}</h1>
-              <p className="text-gray-400 text-sm">
-                {fase === 'seleccion' && 'Seleccionar Jugadores'}
-                {fase === 'objetiva' && 'Evaluación Objetiva'}
-                {fase === 'subjetiva' && 'Evaluación Subjetiva'}
-              </p>
-            </div>
-            <div className="flex gap-1">
-              <span className={`px-2 py-1 rounded text-xs font-medium ${fase === 'seleccion' ? 'bg-primary-500 text-white' : 'bg-gray-600 text-gray-400'}`}>
-                1
-              </span>
-              <span className={`px-2 py-1 rounded text-xs font-medium ${fase === 'objetiva' ? 'bg-green-500 text-white' : 'bg-gray-600 text-gray-400'}`}>
-                2
-              </span>
-              <span className={`px-2 py-1 rounded text-xs font-medium ${fase === 'subjetiva' ? 'bg-accent-500 text-white' : 'bg-gray-600 text-gray-400'}`}>
-                3
-              </span>
-            </div>
+          <h1 className="text-white font-semibold">BlueLock vs {partido.rival}</h1>
+          <p className="text-gray-400 text-sm">Evaluación</p>
+        </div>
+      </div>
+
+      {/* Resumen */}
+      <div className="bg-gray-800 border-b border-gray-700">
+        <div className="max-w-4xl mx-auto px-4 py-2 flex justify-around text-center">
+          <div>
+            <p className="text-2xl font-bold text-green-400">{resumen.goles}</p>
+            <p className="text-xs text-gray-400">Goles</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-yellow-400">{resumen.faltas}</p>
+            <p className="text-xs text-gray-400">Faltas</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-blue-400">{resumen.recuperaciones}</p>
+            <p className="text-xs text-gray-400">Recup.</p>
           </div>
         </div>
       </div>
 
-      {/* FASE 0: Selección de Jugadores */}
-      {fase === 'seleccion' && (
-        <div className="max-w-lg mx-auto p-4 space-y-4">
-          <p className="text-gray-400 text-sm">
-            Selecciona los jugadores que vas a evaluar. Una vez asignados, no estarán disponibles para otros jueces.
-          </p>
-
-          <div className="space-y-2">
-            {jugadoresDisponibles.map(j => (
-              <button
-                key={j.id}
-                onClick={() => toggleSeleccion(j.id)}
-                className={`w-full p-3 rounded-lg flex items-center gap-3 text-left transition-colors ${
-                  seleccionados.includes(j.id)
-                    ? 'bg-primary-600/20 border border-primary-500'
-                    : 'bg-gray-800 hover:bg-gray-750 border border-transparent'
-                }`}
-              >
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
-                  seleccionados.includes(j.id) ? 'bg-primary-600 text-white' : 'bg-gray-700 text-gray-300'
-                }`}>
-                  {seleccionados.includes(j.id) ? '✓' : `#${j.numero}`}
-                </div>
-                <div className="flex-1">
-                  <span className="text-white font-medium">{j.nombre}</span>
-                  {j.posicion && <p className="text-gray-400 text-xs">{j.posicion}</p>}
-                </div>
-              </button>
-            ))}
-            {jugadoresDisponibles.length === 0 && (
-              <p className="text-gray-400 text-center py-4">No hay jugadores disponibles</p>
-            )}
-          </div>
-
-          {error && (
-            <p className="text-red-400 text-center text-sm">{error}</p>
-          )}
-
-          {seleccionados.length > 0 && (
-            <p className="text-primary-400 text-center text-sm font-medium">
-              {seleccionados.length} jugador(es) seleccionado(s)
-            </p>
-          )}
-
-          <button
-            onClick={confirmarAsignacion}
-            disabled={seleccionados.length === 0}
-            className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-semibold py-4 rounded-xl transition-colors text-lg"
-          >
-            Confirmar Selección
-          </button>
+      {/* Error inline */}
+      {error && (
+        <div className="max-w-4xl mx-auto px-4 pt-4">
+          <p className="text-red-400 text-center text-sm">{error}</p>
         </div>
       )}
 
-      {/* FASE 1: Estadísticas Objetivas */}
-      {fase === 'objetiva' && (
-        <>
-          <div className="bg-gray-800 border-b border-gray-700">
-            <div className="max-w-4xl mx-auto px-4 py-2 flex justify-around text-center">
-              <div>
-                <p className="text-2xl font-bold text-green-400">{resumen.goles}</p>
-                <p className="text-xs text-gray-400">Goles</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-yellow-400">{resumen.faltas}</p>
-                <p className="text-xs text-gray-400">Faltas</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-blue-400">{resumen.recuperaciones}</p>
-                <p className="text-xs text-gray-400">Recup.</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="max-w-4xl mx-auto p-4 space-y-4">
-            <div className="bg-gray-800 rounded-xl overflow-x-auto">
-              <table className="text-sm w-full">
-                <thead>
-                  <tr className="border-b border-gray-700">
-                    <th className="sticky left-0 bg-gray-800 z-10 px-3 py-3 text-left text-gray-400 font-semibold min-w-[100px]">
-                      Estadística
-                    </th>
-                    {jugadoresEnCancha.map(j => (
-                      <th key={j.id} className="px-2 py-3 text-center text-gray-300 font-semibold min-w-[80px]">
-                        <div className="text-primary-400 font-bold">#{j.numero}</div>
-                        <div className="text-[11px] text-gray-400 truncate max-w-[80px]">{j.nombre}</div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {STAT_CONFIG.map(({ key, label }) => (
-                    <tr key={key} className="border-b border-gray-700/50">
-                      <td className="sticky left-0 bg-gray-800 z-10 px-3 py-2 text-gray-300 font-medium text-sm">
-                        {label}
-                      </td>
-                      {jugadoresEnCancha.map(jugador => {
-                        const statsJugador = partido.statsObjetivas.find(s => s.jugadorId === jugador.id)
-                        const valor = statsJugador ? (statsJugador as any)[key] : 0
-                        return (
-                          <td key={jugador.id} className="px-1 py-1">
-                            <button
-                              onClick={() => setModalStat({
-                                jugadorId: jugador.id,
-                                jugadorNombre: jugador.nombre,
-                                jugadorNumero: jugador.numero,
-                                stat: key,
-                                label,
-                                valor,
-                              })}
-                              className={`w-full text-center py-2.5 text-sm font-bold rounded-lg transition-colors ${
-                                valor > 0
-                                  ? 'text-primary-400 bg-primary-600/10 hover:bg-primary-600/20'
-                                  : 'text-gray-500 hover:bg-gray-700'
-                              }`}
-                            >
-                              {valor}
-                            </button>
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <button
-              onClick={() => setCambiando(true)}
-              className="w-full bg-accent-600 hover:bg-accent-500 text-white font-semibold py-3 rounded-xl transition-colors"
-            >
-              🔄 Cambiar Jugador
-            </button>
-
-            <button
-              onClick={() => setFase('subjetiva')}
-              className="w-full bg-green-600 hover:bg-green-500 text-white font-semibold py-4 rounded-xl transition-colors text-lg"
-            >
-              Finalizar Evaluación →
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* FASE 2: Evaluación Subjetiva */}
-      {fase === 'subjetiva' && (
-        <>
-          <div className="bg-gray-800 border-b border-gray-700">
-            <div className="max-w-lg mx-auto px-4 py-2">
-              <div className="flex items-center gap-2">
-                <div className="flex-1 bg-gray-700 rounded-full h-2">
-                  <div
-                    className="bg-primary-500 h-2 rounded-full transition-all"
-                    style={{ width: `${total > 0 ? (completados / total) * 100 : 0}%` }}
-                  />
-                </div>
-                <span className="text-gray-400 text-sm">{completados}/{total}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="max-w-lg mx-auto p-4 space-y-4">
-            <button
-              onClick={() => setFase('objetiva')}
-              className="text-gray-400 hover:text-white text-sm transition-colors"
-            >
-              ← Volver a Estadísticas
-            </button>
-
-            {jugadoresEnCancha.map(jugador => (
-              <JudgeScorePad
-                key={jugador.id}
-                jugadorId={jugador.id}
-                nombre={jugador.nombre}
-                numero={jugador.numero}
-                puntuacion={evaluaciones[jugador.id] || 0}
-                onPuntuar={handlePuntuar}
-              />
-            ))}
-
-            {error && (
-              <p className="text-red-400 text-center text-sm">{error}</p>
-            )}
-
-            <button
-              onClick={handleSubmit}
-              disabled={enviando || completados < total}
-              className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-semibold py-4 rounded-xl transition-colors text-lg"
-            >
-              {enviando ? 'Enviando...' : 'Enviar Evaluación'}
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* Modal de cambio de jugador */}
-      {cambiando && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center">
-          <div className="bg-gray-800 w-full max-w-lg rounded-t-2xl p-4 max-h-[70vh] overflow-y-auto">
+      {jugadorEditando ? (
+        /* Vista de stats del jugador */
+        <div className="max-w-4xl mx-auto p-4 space-y-4">
+          <div className="bg-gray-800 rounded-xl p-4">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold text-lg">Cambiar Jugador</h3>
-              <button
-                onClick={() => { setCambiando(false); setJugadorSeleccionado(null) }}
-                className="text-gray-400 hover:text-white text-2xl"
-              >
-                ×
-              </button>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-accent-600 flex items-center justify-center text-lg font-bold">
+                  #{jugadorEditando.numero}
+                </div>
+                <div>
+                  <h2 className="text-white font-semibold text-lg">{jugadorEditando.nombre}</h2>
+                  <p className="text-gray-400 text-sm">{CUARTOS[cuartoActual].label}</p>
+                </div>
+              </div>
             </div>
 
-            {!jugadorSeleccionado ? (
-              <>
-                <p className="text-gray-400 mb-3">Selecciona quién sale:</p>
-                <div className="space-y-2">
-                  {jugadoresEnCancha.map(j => (
-                    <button
-                      key={j.id}
-                      onClick={() => setJugadorSeleccionado(j.id)}
-                      className="w-full p-3 bg-gray-700 hover:bg-gray-600 rounded-lg flex items-center gap-3 text-left"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center text-sm font-bold">
-                        #{j.numero}
-                      </div>
-                      <span className="text-white">{j.nombre}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-gray-400 mb-3">Selecciona quién entra:</p>
-                <div className="space-y-2">
-                  {partido.jugadoresEnCancha
-                    .filter(j => !j.enCancha)
-                    .map(({ jugador }) => (
+            <div className="grid grid-cols-2 gap-3">
+              {STAT_CONFIG.map(({ key, label }) => {
+                const valor = statsJugadorEditando ? (statsJugadorEditando[key] as number) : 0
+                return (
+                  <div key={key} className="bg-gray-700 rounded-xl p-3 text-center">
+                    <p className="text-gray-300 text-sm font-medium mb-2">{label}</p>
+                    <div className="flex items-center justify-center gap-3">
                       <button
-                        key={jugador.id}
-                        onClick={() => handleCambiarJugador(jugadorSeleccionado, jugador.id)}
-                        className="w-full p-3 bg-gray-700 hover:bg-gray-600 rounded-lg flex items-center gap-3 text-left"
+                        onClick={() => handleStatChange(jugadorEditando.id, key, -1)}
+                        className="w-10 h-10 rounded-full bg-gray-600 hover:bg-gray-500 text-white text-xl font-bold flex items-center justify-center transition-colors active:scale-95"
                       >
-                        <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center text-sm font-bold">
-                          #{jugador.numero}
-                        </div>
-                        <span className="text-white">{jugador.nombre}</span>
+                        −
                       </button>
-                    ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Modal de editar stat */}
-      {modalStat && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setModalStat(null)}>
-          <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-xs" onClick={e => e.stopPropagation()}>
-            <p className="text-gray-400 text-sm text-center mb-1">#{modalStat.jugadorNumero} {modalStat.jugadorNombre}</p>
-            <h3 className="text-white font-bold text-lg text-center mb-6">{modalStat.label}</h3>
-
-            <div className="flex items-center justify-center gap-6">
-              <button
-                onClick={() => {
-                  const nuevo = Math.max(0, modalStat.valor - 1)
-                  setModalStat({ ...modalStat, valor: nuevo })
-                  handleStatChange(modalStat.jugadorId, modalStat.stat, -1)
-                }}
-                className="w-16 h-16 rounded-full bg-gray-700 hover:bg-gray-600 text-white text-3xl font-bold flex items-center justify-center transition-colors active:scale-95"
-              >
-                −
-              </button>
-              <span className="text-5xl font-bold text-white w-16 text-center">{modalStat.valor}</span>
-              <button
-                onClick={() => {
-                  const nuevo = modalStat.valor + 1
-                  setModalStat({ ...modalStat, valor: nuevo })
-                  handleStatChange(modalStat.jugadorId, modalStat.stat, 1)
-                }}
-                className="w-16 h-16 rounded-full bg-primary-600 hover:bg-primary-500 text-white text-3xl font-bold flex items-center justify-center transition-colors active:scale-95"
-              >
-                +
-              </button>
+                      <span className="text-3xl font-bold text-white w-10 text-center">{valor}</span>
+                      <button
+                        onClick={() => handleStatChange(jugadorEditando.id, key, 1)}
+                        className="w-10 h-10 rounded-full bg-primary-600 hover:bg-primary-500 text-white text-xl font-bold flex items-center justify-center transition-colors active:scale-95"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
 
             <button
-              onClick={() => setModalStat(null)}
-              className="w-full mt-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl transition-colors"
+              onClick={() => setJugadorEditando(null)}
+              className="w-full mt-4 bg-green-600 hover:bg-green-500 text-white font-semibold py-3 rounded-xl transition-colors text-lg"
             >
-              Listo
+              OK
             </button>
           </div>
+        </div>
+      ) : (
+        /* Grid de jugadores del cuarto */
+        <div className="max-w-4xl mx-auto p-4 space-y-4">
+          {/* Navegación de cuartos */}
+          <div className="flex items-center justify-between bg-gray-800 rounded-xl p-2">
+            <button
+              onClick={() => setCuartoActual(prev => Math.max(0, prev - 1))}
+              disabled={cuartoActual === 0}
+              className={`w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold transition-colors ${
+                cuartoActual === 0
+                  ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                  : 'bg-gray-700 hover:bg-gray-600 text-white'
+              }`}
+            >
+              ◄
+            </button>
+            <span className="text-white font-semibold">{CUARTOS[cuartoActual].label}</span>
+            <button
+              onClick={() => setCuartoActual(prev => Math.min(3, prev + 1))}
+              disabled={cuartoActual === 3}
+              className={`w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold transition-colors ${
+                cuartoActual === 3
+                  ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                  : 'bg-gray-700 hover:bg-gray-600 text-white'
+              }`}
+            >
+              ►
+            </button>
+          </div>
+
+          {/* Grid de jugadores */}
+          {jugadoresDelCuarto().length === 0 ? (
+            <p className="text-gray-400 text-center py-8">
+              No hay jugadores asignados para este cuarto en la formación.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {jugadoresDelCuarto().map(jugador => {
+                const stats = statsParaJugador(jugador.id)
+                const totalPoints = Object.values(stats).reduce((a, b) => a + b, 0)
+                return (
+                  <button
+                    key={jugador.id}
+                    onClick={() => setJugadorEditando(jugador)}
+                    className={`bg-gray-800 rounded-xl p-4 flex flex-col items-center gap-2 transition-colors ${
+                      totalPoints > 0
+                        ? 'border border-primary-500'
+                        : 'border border-transparent hover:bg-gray-750'
+                    }`}
+                  >
+                    <div className="w-12 h-12 rounded-full bg-accent-600 flex items-center justify-center text-lg font-bold">
+                      #{jugador.numero}
+                    </div>
+                    <span className="text-white font-semibold text-center leading-tight">{jugador.nombre}</span>
+                    {totalPoints > 0 && (
+                      <span className="text-primary-400 text-xs font-medium">✓ {totalPoints} registros</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
