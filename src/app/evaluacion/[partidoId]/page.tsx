@@ -62,8 +62,6 @@ export default function EvaluacionPage() {
   const [formacion, setFormacion] = useState<FormacionData | null>(null)
   const [cuartoActual, setCuartoActual] = useState(0)
   const [jugadorEditando, setJugadorEditando] = useState<Jugador | null>(null)
-  const [cambiando, setCambiando] = useState(false)
-  const [jugadorSeleccionado, setJugadorSeleccionado] = useState<number | null>(null)
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(true)
   const socketRef = useRef<Socket | null>(null)
@@ -146,18 +144,6 @@ export default function EvaluacionPage() {
       }
     })
   }, [partidoId])
-
-  const handleCambiarJugador = async (jugadorSalienteId: number, jugadorEntranteId: number) => {
-    await fetch(`/api/partidos/${partidoId}/cambiar`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jugadorSalienteId, jugadorEntranteId })
-    })
-
-    await cargarPartido()
-    setCambiando(false)
-    setJugadorSeleccionado(null)
-  }
 
   if (error && !partido) {
     return (
@@ -338,14 +324,6 @@ export default function EvaluacionPage() {
             </div>
           )}
 
-          {/* Cambiar jugador */}
-          <button
-            onClick={() => setCambiando(true)}
-            className="w-full bg-accent-600 hover:bg-accent-500 text-white font-semibold py-3 rounded-xl transition-colors"
-          >
-            🔄 Cambiar Jugador
-          </button>
-
           {/* Finalizar evaluación */}
           {cuartoActual === 3 && (
             <button
@@ -359,63 +337,6 @@ export default function EvaluacionPage() {
               Finalizar Evaluación
             </button>
           )}
-        </div>
-      )}
-
-      {/* Modal de cambio de jugador */}
-      {cambiando && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center">
-          <div className="bg-gray-800 w-full max-w-lg rounded-t-2xl p-4 max-h-[70vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold text-lg">Cambiar Jugador</h3>
-              <button
-                onClick={() => { setCambiando(false); setJugadorSeleccionado(null) }}
-                className="text-gray-400 hover:text-white text-2xl"
-              >
-                ×
-              </button>
-            </div>
-
-            {!jugadorSeleccionado ? (
-              <>
-                <p className="text-gray-400 mb-3">Selecciona quién sale:</p>
-                <div className="space-y-2">
-                  {jugadoresEnCancha.map(j => (
-                    <button
-                      key={j.id}
-                      onClick={() => setJugadorSeleccionado(j.id)}
-                      className="w-full p-3 bg-gray-700 hover:bg-gray-600 rounded-lg flex items-center gap-3 text-left"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center text-sm font-bold">
-                        #{j.numero}
-                      </div>
-                      <span className="text-white">{j.nombre}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-gray-400 mb-3">Selecciona quién entra:</p>
-                <div className="space-y-2">
-                  {partido.jugadoresEnCancha
-                    .filter(j => !j.enCancha)
-                    .map(({ jugador }) => (
-                      <button
-                        key={jugador.id}
-                        onClick={() => handleCambiarJugador(jugadorSeleccionado, jugador.id)}
-                        className="w-full p-3 bg-gray-700 hover:bg-gray-600 rounded-lg flex items-center gap-3 text-left"
-                      >
-                        <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center text-sm font-bold">
-                          #{jugador.numero}
-                        </div>
-                        <span className="text-white">{jugador.nombre}</span>
-                      </button>
-                    ))}
-                </div>
-              </>
-            )}
-          </div>
         </div>
       )}
     </div>
