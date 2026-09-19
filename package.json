@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node server.js",
     "build": "next build",
-    "start": "next start",
+    "start": "NODE_ENV=production node server.js",
     "lint": "next lint",
     "setup": "prisma generate && prisma db push",
-    "dev:full": "redis-cli ping >/dev/null 2>&1 || redis-server --daemonize yes; npm run setup && next dev",
+    "dev:full": "redis-cli ping >/dev/null 2>&1 || redis-server --daemonize yes; npm run setup && node server.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
@@ -21,6 +21,8 @@
     "react-dom": "^18.3.0",
     "recharts": "^2.15.4",
     "redis": "^4.7.0",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "uuid": "^10.0.0"
   },
   "devDependencies": {

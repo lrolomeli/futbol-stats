@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { getRedisClient } from '@/lib/redis'
+import { emitEstadisticas } from '@/lib/socket'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,17 +29,12 @@ export async function PUT(
     data: { [stat]: nuevoValor }
   })
 
-  // Publicar actualización en Redis para tiempo real
-  try {
-    const redis = await getRedisClient()
-    await redis.publish(`partido:${params.id}:stats`, JSON.stringify({
-      jugadorId: body.jugadorId,
-      stat,
-      valor: nuevoValor
-    }))
-  } catch (e) {
-    console.error('Error publicando en Redis:', e)
-  }
+  // Emitir actualización por websocket para tiempo real
+  emitEstadisticas(parseInt(params.id), {
+    jugadorId: body.jugadorId,
+    stat,
+    valor: nuevoValor
+  })
 
   return NextResponse.json(statsActualizadas)
 }

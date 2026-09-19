@@ -74,8 +74,7 @@ async function main() {
   }
 
   console.log(`¡Partido creado! ID: ${partido.id}`)
-  console.log(`Token de acceso: ${partido.tokenAcceso}`)
-  console.log('Link de evaluación para jueces:', `/evaluacion/${partido.id}/${partido.tokenAcceso}`)
+  console.log('Link de evaluación:', `/evaluacion/${partido.id}`)
 }
 
 main()

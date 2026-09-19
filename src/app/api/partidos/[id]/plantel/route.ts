@@ -39,7 +39,6 @@ export async function POST(
     ])
   } else if (action === 'quitar') {
     await prisma.$transaction([
-      prisma.evaluacionJuez.deleteMany({ where: { partidoId, jugadorId } }),
       prisma.statsObjetivas.deleteMany({ where: { partidoId, jugadorId } }),
       prisma.matchJugador.deleteMany({ where: { partidoId, jugadorId } })
     ])

@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
-import { extraerJugadoresDeFormacion, extraerJugadoresPorMinuto, FORMACION_VACIA } from '@/lib/formacion'
+import { io, type Socket } from 'socket.io-client'
+import { extraerJugadoresPorMinuto, FORMACION_VACIA } from '@/lib/formacion'
 import type { FormacionData } from '@/lib/formacion'
 
 interface Jugador {
@@ -27,9 +28,14 @@ interface PartidoInfo {
   rival: string
   estado: string
   fecha: string
-  tokenAcceso: string
-  jugadoresEnCancha: { jugador: Jugador; enCancha: boolean }[]
+  jugadoresEnCancha: { jugador: Jugador; enCancha: boolean; esSuplente: boolean }[]
   statsObjetivas: (Stats & { jugadorId: number; jugador: Jugador })[]
+}
+
+interface PayloadStats {
+  jugadorId: number
+  stat: keyof Stats
+  valor: number
 }
 
 const STAT_CONFIG: { key: keyof Stats; label: string }[] = [
@@ -51,78 +57,66 @@ const CUARTOS = [
 
 export default function EvaluacionPage() {
   const params = useParams()
+  const partidoId = Number(params.partidoId)
   const [partido, setPartido] = useState<PartidoInfo | null>(null)
-  const [jugadoresAsignados, setJugadoresAsignados] = useState<{ jugador: Jugador }[]>([])
   const [formacion, setFormacion] = useState<FormacionData | null>(null)
   const [cuartoActual, setCuartoActual] = useState(0)
   const [jugadorEditando, setJugadorEditando] = useState<Jugador | null>(null)
+  const [cambiando, setCambiando] = useState(false)
+  const [jugadorSeleccionado, setJugadorSeleccionado] = useState<number | null>(null)
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(true)
+  const socketRef = useRef<Socket | null>(null)
 
-  const cargarDatos = useCallback(async () => {
-    const res = await fetch(`/api/evaluacion/${params.partidoId}/${params.juezToken}`)
+  const cargarPartido = useCallback(async () => {
+    const res = await fetch(`/api/partidos/${partidoId}`)
     if (!res.ok) {
-      setError('Link inválido o partido no encontrado')
-      setCargando(false)
+      setError('Partido no encontrado')
       return
     }
     const data = await res.json()
-    setPartido(data.partido)
-    setJugadoresAsignados(data.jugadoresAsignados || [])
-
-    try {
-      const formacionRes = await fetch('/api/formacion')
-      const formacionData = await formacionRes.json()
-      const datos: FormacionData = formacionData.datos ?? FORMACION_VACIA()
-      setFormacion(datos)
-
-      if (data.tieneAsignaciones) {
-        setCargando(false)
-        return
-      }
-
-      const idsFormacion = extraerJugadoresDeFormacion(datos)
-
-      const idsJugadoresPartido = data.partido.jugadoresEnCancha.map(
-        (jc: { jugador: Jugador }) => jc.jugador.id
-      )
-      const idsAAsignar = idsFormacion.filter(id => idsJugadoresPartido.includes(id))
-
-      if (idsAAsignar.length === 0) {
-        setError('No hay jugadores en la formación para asignar')
-        setCargando(false)
-        return
-      }
-
-      const asignarRes = await fetch(`/api/evaluacion/${params.partidoId}/${params.juezToken}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'asignar', jugadorIds: idsAAsignar })
-      })
-
-      if (!asignarRes.ok) {
-        const errData = await asignarRes.json()
-        setError(errData.error || 'Error al asignar jugadores')
-        setCargando(false)
-        return
-      }
-
-      const refetchRes = await fetch(`/api/evaluacion/${params.partidoId}/${params.juezToken}`)
-      const refetchData = await refetchRes.json()
-      setPartido(refetchData.partido)
-      setJugadoresAsignados(refetchData.jugadoresAsignados || [])
-    } catch {
-      setError('Error al cargar la formación')
-    } finally {
-      setCargando(false)
-    }
-  }, [params.partidoId, params.juezToken])
+    setPartido(data)
+  }, [partidoId])
 
   useEffect(() => {
-    cargarDatos()
-  }, [cargarDatos])
+    cargarPartido()
 
-  const jugadoresEnCancha = jugadoresAsignados.map(a => a.jugador)
+    fetch('/api/formacion')
+      .then(res => res.json())
+      .then(data => setFormacion(data.datos ?? FORMACION_VACIA()))
+      .catch(() => setError('Error al cargar la formación'))
+      .finally(() => setCargando(false))
+
+    const socket = io({ query: { partidoId } })
+    socketRef.current = socket
+    socket.on('stats-update', (payload: PayloadStats) => {
+      setPartido(prev => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          statsObjetivas: prev.statsObjetivas.map(s =>
+            s.jugadorId === payload.jugadorId
+              ? { ...s, [payload.stat]: payload.valor }
+              : s
+          )
+        }
+      })
+    })
+
+    const interval = setInterval(() => {
+      cargarPartido()
+    }, 30000)
+
+    return () => {
+      socket.close()
+      socketRef.current = null
+      clearInterval(interval)
+    }
+  }, [partidoId, cargarPartido])
+
+  const jugadoresEnCancha = partido?.jugadoresEnCancha
+    .filter(j => j.enCancha)
+    .map(j => j.jugador) || []
 
   const jugadoresDelCuarto = useCallback((): Jugador[] => {
     if (!formacion) return []
@@ -133,43 +127,44 @@ export default function EvaluacionPage() {
   }, [formacion, cuartoActual, jugadoresEnCancha])
 
   const handleStatChange = useCallback(async (jugadorId: number, stat: keyof Stats, incremento: number) => {
-    await fetch(`/api/partidos/${params.partidoId}/stats`, {
+    const res = await fetch(`/api/partidos/${partidoId}/stats`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jugadorId, stat, incremento })
     })
+    if (!res.ok) return
+    const stats = await res.json()
     setPartido(prev => {
       if (!prev) return prev
       return {
         ...prev,
         statsObjetivas: prev.statsObjetivas.map(s =>
           s.jugadorId === jugadorId
-            ? { ...s, [stat]: Math.max(0, (s as any)[stat] + incremento) }
+            ? { ...s, [stat]: stats[stat] }
             : s
         )
       }
     })
-  }, [params.partidoId])
+  }, [partidoId])
 
-  const statsParaJugador = useCallback((jugadorId: number): Stats => {
-    const stats = partido?.statsObjetivas.find(s => s.jugadorId === jugadorId)
-    return {
-      goles: stats?.goles ?? 0,
-      asistencias: stats?.asistencias ?? 0,
-      recuperaciones: stats?.recuperaciones ?? 0,
-      tirosAPorteria: stats?.tirosAPorteria ?? 0,
-      faltas: stats?.faltas ?? 0,
-      balonesPerdidos: stats?.balonesPerdidos ?? 0,
-      tirosAfuera: stats?.tirosAfuera ?? 0,
-    }
-  }, [partido])
+  const handleCambiarJugador = async (jugadorSalienteId: number, jugadorEntranteId: number) => {
+    await fetch(`/api/partidos/${partidoId}/cambiar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jugadorSalienteId, jugadorEntranteId })
+    })
+
+    await cargarPartido()
+    setCambiando(false)
+    setJugadorSeleccionado(null)
+  }
 
   if (error && !partido) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
         <div className="text-center">
           <p className="text-red-400 text-lg mb-4">{error}</p>
-          <p className="text-gray-400">Verifica que el link sea correcto</p>
+          <p className="text-gray-400">Verifica el link sea correcto</p>
         </div>
       </div>
     )
@@ -177,11 +172,8 @@ export default function EvaluacionPage() {
 
   if (cargando || !partido) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-400">Cargando evaluación...</p>
-          <p className="text-gray-500 text-sm mt-2">Asignando jugadores desde la formación</p>
-        </div>
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center text-center">
+        <p className="text-gray-400">Cargando evaluación...</p>
       </div>
     )
   }
@@ -195,7 +187,9 @@ export default function EvaluacionPage() {
     { goles: 0, faltas: 0, recuperaciones: 0 }
   )
 
-  const statsJugadorEditando = jugadorEditando ? statsParaJugador(jugadorEditando.id) : null
+  const statsJugadorEditando = jugadorEditando
+    ? partido.statsObjetivas.find(s => s.jugadorId === jugadorEditando.id)
+    : null
 
   return (
     <div className="min-h-screen bg-gray-900 pb-24">
@@ -225,7 +219,6 @@ export default function EvaluacionPage() {
         </div>
       </div>
 
-      {/* Error inline */}
       {error && (
         <div className="max-w-4xl mx-auto px-4 pt-4">
           <p className="text-red-400 text-center text-sm">{error}</p>
@@ -320,8 +313,8 @@ export default function EvaluacionPage() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {jugadoresDelCuarto().map(jugador => {
-                const stats = statsParaJugador(jugador.id)
-                const totalPoints = Object.values(stats).reduce((a, b) => a + b, 0)
+                const stats = partido.statsObjetivas.find(s => s.jugadorId === jugador.id)
+                const totalPoints = Object.values(stats ?? {}).reduce((a, b) => a + (b as number), 0)
                 return (
                   <button
                     key={jugador.id}
@@ -344,6 +337,85 @@ export default function EvaluacionPage() {
               })}
             </div>
           )}
+
+          {/* Cambiar jugador */}
+          <button
+            onClick={() => setCambiando(true)}
+            className="w-full bg-accent-600 hover:bg-accent-500 text-white font-semibold py-3 rounded-xl transition-colors"
+          >
+            🔄 Cambiar Jugador
+          </button>
+
+          {/* Finalizar evaluación */}
+          {cuartoActual === 3 && (
+            <button
+              onClick={() => {
+                if (window.confirm('¿Finalizar la evaluación? Se cerrará esta ventana y volverás al partido.')) {
+                  window.close()
+                }
+              }}
+              className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl transition-colors text-lg"
+            >
+              Finalizar Evaluación
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Modal de cambio de jugador */}
+      {cambiando && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center">
+          <div className="bg-gray-800 w-full max-w-lg rounded-t-2xl p-4 max-h-[70vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-semibold text-lg">Cambiar Jugador</h3>
+              <button
+                onClick={() => { setCambiando(false); setJugadorSeleccionado(null) }}
+                className="text-gray-400 hover:text-white text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            {!jugadorSeleccionado ? (
+              <>
+                <p className="text-gray-400 mb-3">Selecciona quién sale:</p>
+                <div className="space-y-2">
+                  {jugadoresEnCancha.map(j => (
+                    <button
+                      key={j.id}
+                      onClick={() => setJugadorSeleccionado(j.id)}
+                      className="w-full p-3 bg-gray-700 hover:bg-gray-600 rounded-lg flex items-center gap-3 text-left"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center text-sm font-bold">
+                        #{j.numero}
+                      </div>
+                      <span className="text-white">{j.nombre}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-gray-400 mb-3">Selecciona quién entra:</p>
+                <div className="space-y-2">
+                  {partido.jugadoresEnCancha
+                    .filter(j => !j.enCancha)
+                    .map(({ jugador }) => (
+                      <button
+                        key={jugador.id}
+                        onClick={() => handleCambiarJugador(jugadorSeleccionado, jugador.id)}
+                        className="w-full p-3 bg-gray-700 hover:bg-gray-600 rounded-lg flex items-center gap-3 text-left"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center text-sm font-bold">
+                          #{jugador.numero}
+                        </div>
+                        <span className="text-white">{jugador.nombre}</span>
+                      </button>
+                    ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

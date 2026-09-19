@@ -15,23 +15,20 @@ model Jugador {
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  partidosJugados   MatchJugador[]
-  statsObjetivas    StatsObjetivas[]
-  evaluacionesJuez  EvaluacionJuez[]
+  partidosJugados  MatchJugador[]
+  statsObjetivas   StatsObjetivas[]
 }
 
 model Partido {
-  id          Int      @id @default(autoincrement())
-  rival       String
-  fecha       DateTime
-  cancha      String?
-  estado      String   @default("pendiente")
-  tokenAcceso String   @unique @default(uuid())
-  createdAt   DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  rival     String
+  fecha     DateTime
+  cancha    String?
+  estado    String   @default("pendiente")
+  createdAt DateTime @default(now())
 
-  jugadoresEnCancha  MatchJugador[]
-  statsObjetivas     StatsObjetivas[]
-  evaluacionesJuez   EvaluacionJuez[]
+  jugadoresEnCancha MatchJugador[]
+  statsObjetivas    StatsObjetivas[]
 }
 
 model MatchJugador {
@@ -69,18 +66,4 @@ model Formacion {
   id        Int      @id @default(autoincrement())
   datos     Json
   updatedAt DateTime @updatedAt
-}
-
-model EvaluacionJuez {
-  id          Int     @id @default(autoincrement())
-  partidoId   Int
-  jugadorId   Int
-  juezToken   String
-  puntuacion  Int
-  completado  Boolean @default(false)
-
-  partido Partido @relation(fields: [partidoId], references: [id], onDelete: Cascade)
-  jugador Jugador @relation(fields: [jugadorId], references: [id], onDelete: Cascade)
-
-  @@unique([partidoId, jugadorId, juezToken])
 }

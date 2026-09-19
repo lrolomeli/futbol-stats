@@ -20,11 +20,6 @@ export async function GET(
     include: { partido: true }
   })
 
-  const evaluaciones = await prisma.evaluacionJuez.findMany({
-    where: { jugadorId: parseInt(params.jugadorId) },
-    include: { partido: true }
-  })
-
   // Calcular promedios históricos
   const totalPartidos = stats.length
   const promedios = {
@@ -37,17 +32,10 @@ export async function GET(
     tirosAfuera: totalPartidos > 0 ? stats.reduce((sum, s) => sum + s.tirosAfuera, 0) / totalPartidos : 0
   }
 
-  // Promedio de evaluación de jueces
-  const promedioEvaluacion = evaluaciones.length > 0
-    ? evaluaciones.reduce((sum, e) => sum + e.puntuacion, 0) / evaluaciones.length
-    : 0
-
   return NextResponse.json({
     jugador,
     stats,
-    evaluaciones,
     promedios,
-    totalPartidos,
-    promedioEvaluacion
+    totalPartidos
   })
 }

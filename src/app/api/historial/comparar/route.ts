@@ -15,10 +15,6 @@ export async function GET() {
       where: { jugadorId: jugador.id }
     })
 
-    const evaluaciones = await prisma.evaluacionJuez.findMany({
-      where: { jugadorId: jugador.id }
-    })
-
     const totalPartidos = stats.length
     const totalGoles = stats.reduce((sum, s) => sum + s.goles, 0)
     const totalAsistencias = stats.reduce((sum, s) => sum + s.asistencias, 0)
@@ -27,10 +23,6 @@ export async function GET() {
     const totalBalonesPerdidos = stats.reduce((sum, s) => sum + s.balonesPerdidos, 0)
     const totalTirosAPorteria = stats.reduce((sum, s) => sum + s.tirosAPorteria, 0)
     const totalTirosAfuera = stats.reduce((sum, s) => sum + s.tirosAfuera, 0)
-
-    const promedioEvaluacion = evaluaciones.length > 0
-      ? evaluaciones.reduce((sum, e) => sum + e.puntuacion, 0) / evaluaciones.length
-      : 0
 
     const totalTiros = totalTirosAPorteria + totalTirosAfuera
 
@@ -44,7 +36,6 @@ export async function GET() {
       totalBalonesPerdidos,
       totalTirosAPorteria,
       totalTirosAfuera,
-      promedioEvaluacion,
       // Métricas derivadas
       efectividadTiro: totalTiros > 0 ? Math.round((totalTirosAPorteria / totalTiros) * 100) : 0,
       golesPorPartido: totalPartidos > 0 ? +(totalGoles / totalPartidos).toFixed(2) : 0,

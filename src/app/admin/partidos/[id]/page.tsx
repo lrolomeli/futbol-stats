@@ -18,7 +18,6 @@ interface Partido {
   fecha: string
   estado: string
   cancha: string | null
-  tokenAcceso: string
   jugadoresEnCancha: { jugador: Jugador; enCancha: boolean; esSuplente: boolean }[]
 }
 
@@ -170,16 +169,15 @@ export default function PartidoAdminPage() {
           </button>
         </div>
 
-        {/* Sesiones de Evaluación */}
+        {/* Evaluación */}
         <div className="bg-gray-800 p-4 rounded-xl space-y-3">
-          <h3 className="text-white font-semibold">Sesiones de Evaluación</h3>
+          <h3 className="text-white font-semibold">Evaluación</h3>
           <p className="text-gray-400 text-xs">
-            Crea una sesión por cada juez. Cada juez elige sus jugadores y esos quedan asignados.
+            Evaluación compartida del partido: cualquiera que abra el link ve y edita la misma evaluación en tiempo real.
           </p>
           <button
             onClick={() => {
-              const juezId = crypto.randomUUID()
-              window.open(`/evaluacion/${partido.id}/${juezId}`, '_blank')
+              window.open(`/evaluacion/${partido.id}`, '_blank')
             }}
             disabled={partido.estado === 'pendiente' || partido.estado === 'finalizado'}
             className={`w-full font-semibold py-3 rounded-lg transition-colors ${
@@ -188,16 +186,16 @@ export default function PartidoAdminPage() {
                 : 'bg-green-600 hover:bg-green-500 text-white'
             }`}
           >
-            + Nueva Sesión de Evaluación
+            📊 Evaluar Partido
           </button>
           {partido.estado === 'pendiente' && (
             <p className="text-gray-400 text-xs">
-              El partido debe comenzar antes de crear evaluaciones.
+              El partido debe comenzar antes de evaluar.
             </p>
           )}
           {partido.estado === 'finalizado' && (
             <p className="text-gray-400 text-xs">
-              El partido ya finalizó, no se pueden crear evaluaciones.
+              El partido ya finalizó, no se puede evaluar en vivo.
             </p>
           )}
         </div>

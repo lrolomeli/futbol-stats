@@ -24,7 +24,6 @@ interface Comparativa {
   totalBalonesPerdidos: number
   totalTirosAPorteria: number
   totalTirosAfuera: number
-  promedioEvaluacion: number
   efectividadTiro: number
   golesPorPartido: number
   asistenciasPorPartido: number
@@ -59,10 +58,6 @@ interface DetalleJugador {
   totalPartidos: number
   promedios: StatsRaw
   stats: StatsPorPartido[]
-  evaluaciones: {
-    puntuacion: number
-    partido: { rival: string; fecha: string }
-  }[]
 }
 
 const STAT_LABELS: { key: keyof StatsRaw; label: string; color: string }[] = [
@@ -78,7 +73,7 @@ const STAT_LABELS: { key: keyof StatsRaw; label: string; color: string }[] = [
 type MetricaKey = keyof Pick<Comparativa,
   'totalGoles' | 'totalAsistencias' | 'totalRecuperaciones' | 'totalFaltas' |
   'golesPorPartido' | 'asistenciasPorPartido' | 'recuperacionesPorPartido' |
-  'faltasPorPartido' | 'efectividadTiro' | 'promedioEvaluacion'
+  'faltasPorPartido' | 'efectividadTiro'
 >
 
 interface MetricaOption {
@@ -97,7 +92,6 @@ const METRICAS: MetricaOption[] = [
   { key: 'recuperacionesPorPartido', label: 'Recuperaciones / Partido', tipo: 'promedio' },
   { key: 'faltasPorPartido', label: 'Faltas / Partido', tipo: 'promedio' },
   { key: 'efectividadTiro', label: 'Efectividad de Tiro %', tipo: 'porcentaje' },
-  { key: 'promedioEvaluacion', label: 'Evaluación Jueces', tipo: 'promedio' },
 ]
 
 export default function HistorialPage() {
@@ -179,7 +173,6 @@ export default function HistorialPage() {
       asistencias: Math.min(100, d.asistenciasPorPartido * 20),
       recuperaciones: Math.min(100, d.recuperacionesPorPartido * 10),
       efectividad: d.efectividadTiro,
-      evaluacion: (d.promedioEvaluacion / 5) * 100,
     }))
 
   const radarData = [
@@ -187,7 +180,6 @@ export default function HistorialPage() {
     { stat: 'Asist./P', ...Object.fromEntries(datosRadarRaw.map(d => [d.nombre, d.asistencias])) },
     { stat: 'Recup./P', ...Object.fromEntries(datosRadarRaw.map(d => [d.nombre, d.recuperaciones])) },
     { stat: 'Conv. Gol', ...Object.fromEntries(datosRadarRaw.map(d => [d.nombre, d.efectividad])) },
-    { stat: 'Eval. Jueces', ...Object.fromEntries(datosRadarRaw.map(d => [d.nombre, d.evaluacion])) },
   ]
 
   const formatoValor = (valor: number, tipo: string) => {
@@ -414,7 +406,6 @@ export default function HistorialPage() {
                         <th className="px-3 py-3 text-center text-gray-300 font-semibold">R/P</th>
                         <th className="px-3 py-3 text-center text-gray-300 font-semibold">F/P</th>
                         <th className="px-3 py-3 text-center text-gray-300 font-semibold">ET%</th>
-                        <th className="px-3 py-3 text-center text-gray-300 font-semibold">Eval</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -439,9 +430,6 @@ export default function HistorialPage() {
                             <td className="px-3 py-3 text-center text-white">{d.recuperacionesPorPartido}</td>
                             <td className="px-3 py-3 text-center text-white">{d.faltasPorPartido}</td>
                             <td className="px-3 py-3 text-center text-white">{d.efectividadTiro}%</td>
-                            <td className="px-3 py-3 text-center text-purple-400 font-bold">
-                              {d.promedioEvaluacion > 0 ? d.promedioEvaluacion.toFixed(1) : '-'}
-                            </td>
                           </tr>
                         ))}
                     </tbody>

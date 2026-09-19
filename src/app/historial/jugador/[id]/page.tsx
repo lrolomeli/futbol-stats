@@ -14,13 +14,6 @@ interface StatsHistorial {
   tirosAfuera: number
 }
 
-interface PartidoHistorial {
-  fecha: string
-  rival: string
-  stats: StatsHistorial
-  evaluacion?: number
-}
-
 interface DatosJugador {
   jugador: {
     id: number
@@ -30,13 +23,8 @@ interface DatosJugador {
   }
   totalPartidos: number
   promedios: StatsHistorial
-  promedioEvaluacion: number
   stats: {
     stats: StatsHistorial
-    partido: { rival: string; fecha: string }
-  }[]
-  evaluaciones: {
-    puntuacion: number
     partido: { rival: string; fecha: string }
   }[]
 }
@@ -91,19 +79,6 @@ export default function JugadorHistorialPage() {
             <p className="text-gray-400 text-sm">{datos.totalPartidos} partidos jugados</p>
           </div>
         </div>
-
-        {/* Evaluación de jueces */}
-        {datos.promedioEvaluacion > 0 && (
-          <div className="bg-gray-800 p-4 rounded-xl text-center">
-            <p className="text-gray-400 text-sm mb-1">Evaluación Promedio de Jueces</p>
-            <p className="text-4xl font-bold text-yellow-400">
-              ⭐ {datos.promedioEvaluacion.toFixed(1)}
-            </p>
-            <p className="text-gray-400 text-sm">
-              basado en {datos.evaluaciones.length} evaluación(es)
-            </p>
-          </div>
-        )}
 
         {/* Promedios por partido */}
         <div className="bg-gray-800 p-4 rounded-xl">
