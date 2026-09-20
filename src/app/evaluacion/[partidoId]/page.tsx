@@ -48,6 +48,9 @@ const STAT_CONFIG: { key: keyof Stats; label: string }[] = [
   { key: 'tirosAfuera', label: 'Tiros afuera' },
 ]
 
+const EVALUACION_PIN = '098651'
+const PIN_STORAGE_KEY = 'evaluacion_pincode'
+
 export default function EvaluacionPage() {
   const params = useParams()
   const partidoId = Number(params.partidoId)
@@ -56,7 +59,25 @@ export default function EvaluacionPage() {
   const [jugadorEditando, setJugadorEditando] = useState<Jugador | null>(null)
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(true)
+  const [autorizado, setAutorizado] = useState(false)
+  const [pin, setPin] = useState('')
+  const [errorPin, setErrorPin] = useState(false)
   const socketRef = useRef<Socket | null>(null)
+
+  useEffect(() => {
+    if (localStorage.getItem(PIN_STORAGE_KEY) === EVALUACION_PIN) {
+      setAutorizado(true)
+    }
+  }, [])
+
+  const ingresar = async () => {
+    if (pin !== EVALUACION_PIN) {
+      setErrorPin(true)
+      return
+    }
+    localStorage.setItem(PIN_STORAGE_KEY, pin)
+    setAutorizado(true)
+  }
 
   const cargarPartido = useCallback(async () => {
     const res = await fetch(`/api/partidos/${partidoId}`)
@@ -69,6 +90,8 @@ export default function EvaluacionPage() {
   }, [partidoId])
 
   useEffect(() => {
+    if (!autorizado) return
+
     cargarPartido()
 
     fetch('/api/formacion')
@@ -102,7 +125,7 @@ export default function EvaluacionPage() {
       socketRef.current = null
       clearInterval(interval)
     }
-  }, [partidoId, cargarPartido])
+  }, [partidoId, cargarPartido, autorizado])
 
   const jugadoresEnCancha = partido?.jugadoresEnCancha
     .filter(j => j.enCancha)
@@ -141,6 +164,41 @@ export default function EvaluacionPage() {
       }
     })
   }, [partidoId])
+
+  if (!autorizado) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+        <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-xs">
+          <h3 className="text-white font-bold text-lg text-center mb-1">Evaluación</h3>
+          <p className="text-gray-400 text-sm text-center mb-4">
+            Ingresá el pincode para acceder a la evaluación del partido.
+          </p>
+
+          <input
+            type="password"
+            inputMode="numeric"
+            placeholder="Pincode"
+            value={pin}
+            onChange={e => { setPin(e.target.value); setErrorPin(false) }}
+            onKeyDown={e => { if (e.key === 'Enter') ingresar() }}
+            className="w-full bg-gray-700 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-center tracking-widest"
+          />
+
+          {errorPin && (
+            <p className="text-red-400 text-sm text-center mt-2">Pincode incorrecto</p>
+          )}
+
+          <button
+            onClick={ingresar}
+            disabled={!pin}
+            className="w-full mt-5 py-3 bg-primary-600 hover:bg-primary-500 text-white rounded-xl transition-colors font-semibold disabled:opacity-50"
+          >
+            Ingresar
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (error && !partido) {
     return (
