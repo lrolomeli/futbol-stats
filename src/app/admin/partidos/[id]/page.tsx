@@ -63,15 +63,6 @@ export default function PartidoAdminPage() {
     await cargarPartido()
   }
 
-  const cambiarEstado = async (nuevoEstado: string) => {
-    await fetch(`/api/partidos/${params.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ estado: nuevoEstado })
-    })
-    setPartido(prev => prev ? { ...prev, estado: nuevoEstado } : null)
-  }
-
   const eliminarPartido = async (pincode: string) => {
     const res = await fetch(`/api/partidos/${params.id}`, {
       method: 'DELETE',
@@ -130,24 +121,6 @@ export default function PartidoAdminPage() {
         {/* Controles del partido */}
         <div className="bg-gray-800 p-4 rounded-xl space-y-3">
           <h3 className="text-white font-semibold">Control del Partido</h3>
-          <div className="grid grid-cols-2 gap-2">
-            {partido.estado === 'pendiente' && (
-              <button
-                onClick={() => cambiarEstado('en_curso')}
-                className="bg-green-600 hover:bg-green-500 text-white font-semibold py-3 rounded-lg transition-colors"
-              >
-                Iniciar Partido
-              </button>
-            )}
-            {partido.estado === 'en_curso' && (
-              <button
-                onClick={() => cambiarEstado('finalizado')}
-                className="bg-red-600 hover:bg-red-500 text-white font-semibold py-3 rounded-lg transition-colors"
-              >
-                Finalizar
-              </button>
-            )}
-          </div>
 
           <button
             onClick={abrirPlantel}
@@ -179,25 +152,10 @@ export default function PartidoAdminPage() {
             onClick={() => {
               window.open(`/evaluacion/${partido.id}`, '_blank')
             }}
-            disabled={partido.estado === 'pendiente' || partido.estado === 'finalizado'}
-            className={`w-full font-semibold py-3 rounded-lg transition-colors ${
-              partido.estado === 'pendiente' || partido.estado === 'finalizado'
-                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                : 'bg-green-600 hover:bg-green-500 text-white'
-            }`}
+            className="w-full font-semibold py-3 rounded-lg transition-colors bg-green-600 hover:bg-green-500 text-white"
           >
             📊 Evaluar Partido
           </button>
-          {partido.estado === 'pendiente' && (
-            <p className="text-gray-400 text-xs">
-              El partido debe comenzar antes de evaluar.
-            </p>
-          )}
-          {partido.estado === 'finalizado' && (
-            <p className="text-gray-400 text-xs">
-              El partido ya finalizó, no se puede evaluar en vivo.
-            </p>
-          )}
         </div>
 
         {/* Jugadores en cancha */}
