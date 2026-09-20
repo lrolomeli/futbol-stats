@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { io, type Socket } from 'socket.io-client'
-import { extraerJugadoresPorMinuto, FORMACION_VACIA } from '@/lib/formacion'
+import { extraerJugadoresPorMinuto, FORMACION_VACIA, MINUTOS } from '@/lib/formacion'
 import type { FormacionData } from '@/lib/formacion'
 
 interface Jugador {
@@ -48,19 +48,11 @@ const STAT_CONFIG: { key: keyof Stats; label: string }[] = [
   { key: 'tirosAfuera', label: 'Tiros afuera' },
 ]
 
-const CUARTOS = [
-  { minuto: '0', label: '1er Tiempo - 1ra Mitad' },
-  { minuto: '10', label: '1er Tiempo - 2da Mitad' },
-  { minuto: '20', label: '2do Tiempo - 1ra Mitad' },
-  { minuto: '30', label: '2do Tiempo - 2da Mitad' },
-]
-
 export default function EvaluacionPage() {
   const params = useParams()
   const partidoId = Number(params.partidoId)
   const [partido, setPartido] = useState<PartidoInfo | null>(null)
   const [formacion, setFormacion] = useState<FormacionData | null>(null)
-  const [cuartoActual, setCuartoActual] = useState(0)
   const [jugadorEditando, setJugadorEditando] = useState<Jugador | null>(null)
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(true)
@@ -116,13 +108,18 @@ export default function EvaluacionPage() {
     .filter(j => j.enCancha)
     .map(j => j.jugador) || []
 
-  const jugadoresDelCuarto = useCallback((): Jugador[] => {
+  const jugadores = useCallback((): Jugador[] => {
     if (!formacion) return []
-    const ids = extraerJugadoresPorMinuto(formacion, CUARTOS[cuartoActual].minuto)
-    return ids
+    const ids = new Set<number>()
+    for (const minuto of MINUTOS) {
+      for (const id of extraerJugadoresPorMinuto(formacion, String(minuto))) {
+        ids.add(id)
+      }
+    }
+    return [...ids]
       .map(id => jugadoresEnCancha.find(j => j.id === id))
       .filter((j): j is Jugador => !!j)
-  }, [formacion, cuartoActual, jugadoresEnCancha])
+  }, [formacion, jugadoresEnCancha])
 
   const handleStatChange = useCallback(async (jugadorId: number, stat: keyof Stats, incremento: number) => {
     const res = await fetch(`/api/partidos/${partidoId}/stats`, {
@@ -222,7 +219,7 @@ export default function EvaluacionPage() {
                 </div>
                 <div>
                   <h2 className="text-white font-semibold text-lg">{jugadorEditando.nombre}</h2>
-                  <p className="text-gray-400 text-sm">{CUARTOS[cuartoActual].label}</p>
+                  <p className="text-gray-400 text-sm">{partido.rival}</p>
                 </div>
               </div>
             </div>
@@ -262,43 +259,16 @@ export default function EvaluacionPage() {
           </div>
         </div>
       ) : (
-        /* Grid de jugadores del cuarto */
+        /* Grid de jugadores */
         <div className="max-w-4xl mx-auto p-4 space-y-4">
-          {/* Navegación de cuartos */}
-          <div className="flex items-center justify-between bg-gray-800 rounded-xl p-2">
-            <button
-              onClick={() => setCuartoActual(prev => Math.max(0, prev - 1))}
-              disabled={cuartoActual === 0}
-              className={`w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold transition-colors ${
-                cuartoActual === 0
-                  ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                  : 'bg-gray-700 hover:bg-gray-600 text-white'
-              }`}
-            >
-              ◄
-            </button>
-            <span className="text-white font-semibold">{CUARTOS[cuartoActual].label}</span>
-            <button
-              onClick={() => setCuartoActual(prev => Math.min(3, prev + 1))}
-              disabled={cuartoActual === 3}
-              className={`w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold transition-colors ${
-                cuartoActual === 3
-                  ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                  : 'bg-gray-700 hover:bg-gray-600 text-white'
-              }`}
-            >
-              ►
-            </button>
-          </div>
-
           {/* Grid de jugadores */}
-          {jugadoresDelCuarto().length === 0 ? (
+          {jugadores().length === 0 ? (
             <p className="text-gray-400 text-center py-8">
-              No hay jugadores asignados para este cuarto en la formación.
+              No hay jugadores asignados en la formación.
             </p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {jugadoresDelCuarto().map(jugador => {
+              {jugadores().map(jugador => {
                 const stats = partido.statsObjetivas.find(s => s.jugadorId === jugador.id)
                 const totalPoints = Object.values(stats ?? {}).reduce((a, b) => a + (b as number), 0)
                 return (
@@ -325,18 +295,16 @@ export default function EvaluacionPage() {
           )}
 
           {/* Finalizar evaluación */}
-          {cuartoActual === 3 && (
-            <button
-              onClick={() => {
-                if (window.confirm('¿Finalizar la evaluación? Se cerrará esta ventana y volverás al partido.')) {
-                  window.close()
-                }
-              }}
-              className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl transition-colors text-lg"
-            >
-              Finalizar Evaluación
-            </button>
-          )}
+          <button
+            onClick={() => {
+              if (window.confirm('¿Finalizar la evaluación? Se cerrará esta ventana y volverás al partido.')) {
+                window.close()
+              }
+            }}
+            className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl transition-colors text-lg"
+          >
+            Finalizar Evaluación
+          </button>
         </div>
       )}
     </div>
