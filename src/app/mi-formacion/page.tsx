@@ -110,8 +110,9 @@ export default function MiFormacionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estado])
 
-  const jugadores = estado?.jugadores ?? []
-  const datos = estado?.datos ?? null
+  const estadoActual = estado && estado.clave === clave ? estado : null
+  const jugadores = estadoActual?.jugadores ?? []
+  const datos = estadoActual?.datos ?? null
 
   const jugadorPorId = useMemo(
     () => new Map(jugadores.map(j => [j.id, j])),
@@ -152,7 +153,7 @@ export default function MiFormacionPage() {
   const agregarACelda = (jugadorId: number) => {
     if (!estado || !celdaAbierta) return
     const { posicion, minuto } = celdaAbierta
-    if (estado.datos[posicion][minuto].includes(jugadorId)) return
+    if (estado.datos[posicion]?.[minuto]?.includes(jugadorId)) return
     if (idsEnMinuto.get(minuto)?.has(jugadorId)) {
       mostrarMensaje('error', 'Ese jugador ya está asignado en este minuto')
       return
@@ -173,7 +174,7 @@ export default function MiFormacionPage() {
         ...estado.datos,
         [posicion]: {
           ...estado.datos[posicion],
-          [minuto]: estado.datos[posicion][minuto].filter(id => id !== jugadorId)
+          [minuto]: (estado.datos[posicion]?.[minuto] ?? []).filter(id => id !== jugadorId)
         }
       }
     })
@@ -563,10 +564,10 @@ export default function MiFormacionPage() {
                             onClick={() => setCeldaAbierta({ posicion: key, minuto: String(minuto) })}
                             className="min-h-[44px] bg-gray-700/60 border border-gray-600/60 rounded-md p-1 flex flex-col gap-0.5 cursor-pointer hover:border-primary-500/60 transition-colors"
                           >
-                            {datos[key][String(minuto)].length === 0 ? (
+                            {(datos[key]?.[String(minuto)] ?? []).length === 0 ? (
                               <div className="flex-1 flex items-center justify-center text-gray-500 text-sm select-none">+</div>
                             ) : (
-                              datos[key][String(minuto)].map(id => {
+                              (datos[key]?.[String(minuto)] ?? []).map(id => {
                                 const jugador = jugadorPorId.get(id)
                                 if (!jugador) return null
                                 return (
@@ -709,9 +710,10 @@ function CeldaModal({
   onCopiarDeApp: (jugador: JugadorApp) => void
   onCerrar: () => void
 }) {
+  const idsEnCelda = datos[posicion]?.[minuto] ?? []
   const otroLugar = (id: number): string | null => {
     for (const { key, label } of posicionesDe(clave)) {
-      if (key !== posicion && datos[key][minuto].includes(id)) return label
+      if (key !== posicion && (datos[key]?.[minuto] ?? []).includes(id)) return label
     }
     return null
   }
@@ -727,9 +729,9 @@ function CeldaModal({
           <button onClick={onCerrar} className="text-gray-400 hover:text-white text-2xl">×</button>
         </div>
 
-        {datos[posicion][minuto].length > 0 && (
+        {idsEnCelda.length > 0 && (
           <div className="space-y-2 mb-4 pb-3 border-b border-gray-700">
-            {datos[posicion][minuto].map(id => {
+            {idsEnCelda.map(id => {
               const jugador = jugadorPorId.get(id)
               if (!jugador) return null
               return (
@@ -761,7 +763,7 @@ function CeldaModal({
         ) : (
           <div className="space-y-2">
             {jugadores.map(jugador => {
-              const enEstaCelda = datos[posicion][minuto].includes(jugador.id)
+              const enEstaCelda = idsEnCelda.includes(jugador.id)
               const ocupado = idsEnMinuto.has(jugador.id)
               const lugar = otroLugar(jugador.id)
               return (
