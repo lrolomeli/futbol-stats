@@ -1,11 +1,18 @@
 import { FORMACION_VACIA } from './formacion'
-import type { FormacionData } from './formacion'
+import type { ClaveFormacion, FormacionData } from './formacion'
 import { generarPreviewImport } from './respaldoFormacion'
 import type { RespaldoFormacion } from './respaldoFormacion'
 
 export const VERSION_MI_FORMACION = 1
-export const CLAVE_MI_FORMACION = 'mi_formacion'
 export const GUARDADO_MS = 400
+export const CLAVE_MI_FORMACION_V1 = 'mi_formacion'
+
+const CLAVES_MI_FORMACION: Record<ClaveFormacion, string> = {
+  defensiva: 'mi_formacion_defensiva',
+  ofensiva: 'mi_formacion_ofensiva'
+}
+
+export const claveDeMiFormacion = (clave: ClaveFormacion): string => CLAVES_MI_FORMACION[clave]
 
 export type OrigenJugador = 'propio' | 'app'
 
@@ -20,15 +27,17 @@ export interface JugadorLocal {
 
 export interface EstadoMiFormacion {
   version: number
+  clave: ClaveFormacion
   jugadores: JugadorLocal[]
   datos: FormacionData
   actualizadoEn: string
 }
 
-export const MI_FORMACION_VACIA = (): EstadoMiFormacion => ({
+export const MI_FORMACION_VACIA = (clave: ClaveFormacion): EstadoMiFormacion => ({
   version: VERSION_MI_FORMACION,
+  clave,
   jugadores: [],
-  datos: FORMACION_VACIA(),
+  datos: FORMACION_VACIA(clave),
   actualizadoEn: new Date().toISOString()
 })
 
@@ -55,11 +64,11 @@ function normalizarJugadores(crudo: unknown): JugadorLocal[] {
     vistos.add(id as number)
     jugadores.push({
       id: id as number,
-      nombre: candidato.nombre.trim(),
+      nombre: (candidato.nombre as string).trim(),
       numero: Number.isInteger(candidato.numero) ? (candidato.numero as number) : 0,
       posicion:
         typeof candidato.posicion === 'string' && candidato.posicion.trim() !== ''
-          ? candidato.posicion.trim()
+          ? (candidato.posicion as string).trim()
           : null,
       origen: candidato.origen === 'app' ? 'app' : 'propio',
       appId: Number.isInteger(candidato.appId) ? (candidato.appId as number) : null
@@ -70,7 +79,7 @@ function normalizarJugadores(crudo: unknown): JugadorLocal[] {
   return jugadores
 }
 
-export function normalizarEstado(crudo: unknown): EstadoMiFormacion {
+export function normalizarEstado(crudo: unknown, clave: ClaveFormacion): EstadoMiFormacion {
   const jugadores = normalizarJugadores(
     crudo && typeof crudo === 'object' ? (crudo as Record<string, unknown>).jugadores : null
   )
@@ -79,32 +88,40 @@ export function normalizarEstado(crudo: unknown): EstadoMiFormacion {
 
   const respaldo: RespaldoFormacion = {
     version: VERSION_MI_FORMACION,
+    clave,
     generadoEn: null,
     jugadores: jugadores.map(j => ({ id: j.id, numero: j.numero, nombre: j.nombre })),
     datos:
       datosCandidatas && typeof datosCandidatas === 'object'
         ? (datosCandidatas as FormacionData)
-        : FORMACION_VACIA()
+        : FORMACION_VACIA(clave)
   }
 
-  const { datosResultantes } = generarPreviewImport(respaldo, jugadores, FORMACION_VACIA())
+  const { datosResultantes } = generarPreviewImport(respaldo, jugadores, FORMACION_VACIA(clave))
 
   return {
     version: VERSION_MI_FORMACION,
+    clave,
     jugadores,
     datos: datosResultantes,
     actualizadoEn: new Date().toISOString()
   }
 }
 
-export function cargarEstado(): EstadoMiFormacion {
-  if (typeof window === 'undefined') return MI_FORMACION_VACIA()
+export function cargarEstado(clave: ClaveFormacion): EstadoMiFormacion {
+  if (typeof window === 'undefined') return MI_FORMACION_VACIA(clave)
   try {
-    const texto = window.localStorage.getItem(CLAVE_MI_FORMACION)
-    if (!texto) return MI_FORMACION_VACIA()
-    return normalizarEstado(JSON.parse(texto))
+    const texto = window.localStorage.getItem(CLAVES_MI_FORMACION[clave])
+    if (!texto) {
+      if (clave === 'ofensiva') {
+        const viejo = window.localStorage.getItem(CLAVE_MI_FORMACION_V1)
+        if (viejo) return normalizarEstado(JSON.parse(viejo), 'ofensiva')
+      }
+      return MI_FORMACION_VACIA(clave)
+    }
+    return normalizarEstado(JSON.parse(texto), clave)
   } catch {
-    return MI_FORMACION_VACIA()
+    return MI_FORMACION_VACIA(clave)
   }
 }
 
@@ -112,17 +129,17 @@ export function guardarEstado(estado: EstadoMiFormacion): boolean {
   if (typeof window === 'undefined') return false
   try {
     const payload: EstadoMiFormacion = { ...estado, actualizadoEn: new Date().toISOString() }
-    window.localStorage.setItem(CLAVE_MI_FORMACION, JSON.stringify(payload))
+    window.localStorage.setItem(CLAVES_MI_FORMACION[estado.clave], JSON.stringify(payload))
     return true
   } catch {
     return false
   }
 }
 
-export function borrarEstado(): void {
+export function borrarEstado(clave: ClaveFormacion): void {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.removeItem(CLAVE_MI_FORMACION)
+    window.localStorage.removeItem(CLAVES_MI_FORMACION[clave])
   } catch {
     // sin localStorage disponible no hay nada que borrar
   }

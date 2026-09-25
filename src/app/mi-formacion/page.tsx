@@ -4,8 +4,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import Navbar from '@/components/Navbar'
 import PreviewImportModal from '@/components/PreviewImportModal'
 import TablaRotacionCuartos from '@/components/TablaRotacionCuartos'
-import { MINUTOS, POSICIONES, idsPorMinuto } from '@/lib/formacion'
-import type { ClavePosicion, FormacionData } from '@/lib/formacion'
+import { CLAVES_FORMACION, MINUTOS, idsPorMinuto, posicionesDe } from '@/lib/formacion'
+import type { ClaveFormacion, FormacionData } from '@/lib/formacion'
 import { colorDeJugador } from '@/lib/colores'
 import { descargarImagenFormacion } from '@/lib/imagenFormacion'
 import type { TiempoImagen } from '@/lib/imagenFormacion'
@@ -31,7 +31,7 @@ interface JugadorApp {
 }
 
 interface CeldaSeleccionada {
-  posicion: ClavePosicion
+  posicion: string
   minuto: string
 }
 
@@ -45,7 +45,13 @@ const TIEMPOS = [
   { label: '2do Tiempo', tiempo: 2 as const, minutos: MINUTOS.slice(2) }
 ]
 
+const ETIQUETAS: Record<ClaveFormacion, string> = {
+  defensiva: 'Defensiva',
+  ofensiva: 'Ofensiva'
+}
+
 export default function MiFormacionPage() {
+  const [clave, setClave] = useState<ClaveFormacion>('defensiva')
   const [estado, setEstado] = useState<EstadoMiFormacion | null>(null)
   const [cargando, setCargando] = useState(true)
   const [mensaje, setMensaje] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null)
@@ -65,12 +71,15 @@ export default function MiFormacionPage() {
   const [editandoId, setEditandoId] = useState<number | null>(null)
 
   useEffect(() => {
-    setEstado(cargarEstado())
+    setEstado(cargarEstado(clave))
     setCargando(false)
+    setCeldaAbierta(null)
+    limpiarFormulario()
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current)
     }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clave])
 
   useEffect(() => {
     let vigente = true
@@ -98,6 +107,7 @@ export default function MiFormacionPage() {
       }
     }, GUARDADO_MS)
     return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estado])
 
   const jugadores = estado?.jugadores ?? []
@@ -156,7 +166,7 @@ export default function MiFormacionPage() {
     setCeldaAbierta(null)
   }
 
-  const quitarDeCelda = (posicion: ClavePosicion, minuto: string, jugadorId: number) => {
+  const quitarDeCelda = (posicion: string, minuto: string, jugadorId: number) => {
     if (!estado) return
     actualizar({
       datos: {
@@ -254,9 +264,9 @@ export default function MiFormacionPage() {
   }
 
   const borrarTodo = () => {
-    if (!confirm('Se borran tu alineación y todos tus jugadores de este navegador. No se puede deshacer. ¿Seguís?')) return
-    borrarEstado()
-    setEstado(MI_FORMACION_VACIA())
+    if (!confirm(`Se borran tu alineación ${ETIQUETAS[clave].toLowerCase()} y todos tus jugadores de este navegador. No se puede deshacer. ¿Seguís?`)) return
+    borrarEstado(clave)
+    setEstado(MI_FORMACION_VACIA(clave))
     limpiarFormulario()
     setCeldaAbierta(null)
     mostrarMensaje('exito', 'Todo borrado')
@@ -266,7 +276,7 @@ export default function MiFormacionPage() {
     if (!datos || descargando) return
     setDescargando(tiempo)
     try {
-      await descargarImagenFormacion(tiempo, datos, jugadorPorId)
+      await descargarImagenFormacion(tiempo, datos, jugadorPorId, clave, `mi-formacion-${clave}`)
     } catch (e: any) {
       mostrarMensaje('error', e.message || 'No se pudo generar la imagen')
     } finally {
@@ -277,7 +287,7 @@ export default function MiFormacionPage() {
   const exportarRespaldo = () => {
     if (!datos) return
     try {
-      descargarRespaldo(datos, jugadorPorId, 'mi-formacion')
+      descargarRespaldo(datos, jugadorPorId, clave, `mi-formacion-${clave}`)
       mostrarMensaje('exito', 'Copia de seguridad descargada')
     } catch (e: any) {
       mostrarMensaje('error', e.message || 'No se pudo generar el archivo')
@@ -293,6 +303,10 @@ export default function MiFormacionPage() {
       const parseo = parsearRespaldo(await archivo.text())
       if (!parseo.ok) {
         mostrarMensaje('error', parseo.error)
+        return
+      }
+      if (parseo.respaldo.clave !== clave) {
+        mostrarMensaje('error', `Este respaldo es de la formación ${parseo.respaldo.clave} y lo estás importando en la ${clave}`)
         return
       }
       const nuevos = jugadoresDelRespaldoAusentes(parseo.respaldo, jugadores)
@@ -321,7 +335,17 @@ export default function MiFormacionPage() {
     mostrarMensaje('exito', 'Formación restaurada')
   }
 
-  const posicionLabel = (key: string) => POSICIONES.find(p => p.key === key)?.label ?? key
+  function jugadoresEnMinuto(jugadorId: number): string[] {
+    const lugares: string[] = []
+    for (const minuto of MINUTOS) {
+      for (const { key } of posicionesDe(clave)) {
+        if (datos?.[key]?.[String(minuto)]?.includes(jugadorId)) {
+          lugares.push(`M${minuto}`)
+        }
+      }
+    }
+    return lugares
+  }
 
   if (cargando || !datos) {
     return (
@@ -349,9 +373,25 @@ export default function MiFormacionPage() {
           </div>
         )}
 
+        <div className="grid grid-cols-2 gap-1 bg-gray-800 p-1 rounded-xl">
+          {CLAVES_FORMACION.map(c => (
+            <button
+              key={c}
+              onClick={() => setClave(c)}
+              className={`text-sm font-semibold py-2.5 rounded-lg transition-colors ${
+                clave === c
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              }`}
+            >
+              {ETIQUETAS[c]}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center justify-between gap-2">
           <div>
-            <h2 className="text-white font-semibold text-lg">Mi alineación</h2>
+            <h2 className="text-white font-semibold text-lg">Mi alineación {ETIQUETAS[clave].toLowerCase()}</h2>
             <p className="text-gray-400 text-xs">
               Se guarda solamente en este navegador, no se envía nada al servidor.
             </p>
@@ -491,10 +531,10 @@ export default function MiFormacionPage() {
             <p className="text-gray-400 text-center py-6">Agregá jugadores para empezar a armar la formación.</p>
           ) : (
             <>
-              {TIEMPOS.map(({ label: titulo, tiempo, minutos }) => (
+              {TIEMPOS.map(({ label: tituloTiempo, tiempo, minutos }) => (
                 <div key={tiempo} className="mb-4 last:mb-0">
                   <div className="text-center mb-2">
-                    <span className="text-gray-300 text-xs font-semibold">{titulo}</span>
+                    <span className="text-gray-300 text-xs font-semibold">{tituloTiempo}</span>
                   </div>
 
                   <div className="grid grid-cols-[auto_repeat(2,minmax(0,1fr))] gap-1">
@@ -505,7 +545,7 @@ export default function MiFormacionPage() {
                       </div>
                     ))}
 
-                    {POSICIONES.map(({ key, label, numero }) => (
+                    {posicionesDe(clave).map(({ key, label, numero }) => (
                       <Fragment key={key}>
                         <div className="flex flex-col items-center justify-center gap-1">
                           <button
@@ -597,7 +637,14 @@ export default function MiFormacionPage() {
           />
         </div>
 
-        {jugadores.length > 0 && <TablaRotacionCuartos datos={datos} jugadorPorId={jugadorPorId} />}
+        {jugadores.length > 0 && (
+          <TablaRotacionCuartos
+            datos={datos}
+            jugadorPorId={jugadorPorId}
+            clave={clave}
+            tituloShare={`⚽ Rotación ${ETIQUETAS[clave].toLowerCase()} por cuartos`}
+          />
+        )}
       </div>
 
       {celdaAbierta && (
@@ -606,6 +653,7 @@ export default function MiFormacionPage() {
           jugadores={jugadores}
           jugadorPorId={jugadorPorId}
           jugadoresApp={appDisponibles}
+          clave={clave}
           posicion={celdaAbierta.posicion}
           minuto={celdaAbierta.minuto}
           idsEnMinuto={idsEnMinuto.get(celdaAbierta.minuto) ?? new Set()}
@@ -613,7 +661,6 @@ export default function MiFormacionPage() {
           onQuitar={quitarDeCelda}
           onCopiarDeApp={copiarYAsignar}
           onCerrar={() => setCeldaAbierta(null)}
-          posicionLabel={posicionLabel}
         />
       )}
 
@@ -633,18 +680,6 @@ export default function MiFormacionPage() {
       )}
     </div>
   )
-
-  function jugadoresEnMinuto(jugadorId: number): string[] {
-    const lugares: string[] = []
-    for (const minuto of MINUTOS) {
-      for (const { key } of POSICIONES) {
-        if (datos?.[key]?.[String(minuto)]?.includes(jugadorId)) {
-          lugares.push(`M${minuto}`)
-        }
-      }
-    }
-    return lugares
-  }
 }
 
 function CeldaModal({
@@ -652,31 +687,31 @@ function CeldaModal({
   jugadores,
   jugadorPorId,
   jugadoresApp,
+  clave,
   posicion,
   minuto,
   idsEnMinuto,
   onAgregar,
   onQuitar,
   onCopiarDeApp,
-  onCerrar,
-  posicionLabel
+  onCerrar
 }: {
   datos: FormacionData
   jugadores: JugadorLocal[]
   jugadorPorId: Map<number, JugadorLocal>
   jugadoresApp: JugadorApp[]
-  posicion: ClavePosicion
+  clave: ClaveFormacion
+  posicion: string
   minuto: string
   idsEnMinuto: Set<number>
   onAgregar: (jugadorId: number) => void
-  onQuitar: (posicion: ClavePosicion, minuto: string, jugadorId: number) => void
+  onQuitar: (posicion: string, minuto: string, jugadorId: number) => void
   onCopiarDeApp: (jugador: JugadorApp) => void
   onCerrar: () => void
-  posicionLabel: (key: string) => string
 }) {
   const otroLugar = (id: number): string | null => {
-    for (const { key } of POSICIONES) {
-      if (key !== posicion && datos[key][minuto].includes(id)) return posicionLabel(key)
+    for (const { key, label } of posicionesDe(clave)) {
+      if (key !== posicion && datos[key][minuto].includes(id)) return label
     }
     return null
   }
@@ -687,7 +722,7 @@ function CeldaModal({
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-white font-semibold text-lg">
-            {posicionLabel(posicion)} · Min {minuto}
+            {otroLugarPosicion(clave, posicion)} · Min {minuto}
           </h3>
           <button onClick={onCerrar} className="text-gray-400 hover:text-white text-2xl">×</button>
         </div>
@@ -793,4 +828,8 @@ function CeldaModal({
       </div>
     </div>
   )
+}
+
+function otroLugarPosicion(clave: ClaveFormacion, key: string): string {
+  return posicionesDe(clave).find(p => p.key === key)?.label ?? key
 }

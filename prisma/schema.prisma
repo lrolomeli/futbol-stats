@@ -64,6 +64,7 @@ model StatsObjetivas {
 
 model Formacion {
   id        Int      @id @default(autoincrement())
+  clave     String   @unique @default("defensiva")
   datos     Json
   updatedAt DateTime @updatedAt
 }

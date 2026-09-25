@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { extraerJugadoresDeFormacion, FORMACION_VACIA } from '@/lib/formacion'
+import { CLAVE_DEFENSIVA, extraerJugadoresDeFormacion, FORMACION_VACIA } from '@/lib/formacion'
 import type { FormacionData } from '@/lib/formacion'
 
 export const dynamic = 'force-dynamic'
@@ -24,8 +24,8 @@ export async function POST(request: NextRequest) {
   let jugadoresIds: number[] = body.jugadoresIds ?? []
 
   if (jugadoresIds.length === 0) {
-    const formacion = await prisma.formacion.findFirst()
-    const datos = (formacion?.datos as FormacionData) ?? FORMACION_VACIA()
+    const formacion = await prisma.formacion.findUnique({ where: { clave: CLAVE_DEFENSIVA } })
+    const datos = (formacion?.datos as FormacionData) ?? FORMACION_VACIA(CLAVE_DEFENSIVA)
     jugadoresIds = extraerJugadoresDeFormacion(datos)
 
     const jugadoresActivos = await prisma.jugador.findMany({

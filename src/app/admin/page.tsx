@@ -63,8 +63,16 @@ export default function AdminPage() {
             href="/admin/formacion"
             className="bg-gray-800 hover:bg-gray-750 p-4 rounded-xl text-center transition-colors"
           >
-            <div className="text-2xl mb-2">📋</div>
-            <span className="text-white font-medium">Formación</span>
+            <div className="text-2xl mb-2">🛡️</div>
+            <span className="text-white font-medium">Formación Defensiva</span>
+          </Link>
+
+          <Link
+            href="/formacion-ofensiva"
+            className="bg-gray-800 hover:bg-gray-750 p-4 rounded-xl text-center transition-colors"
+          >
+            <div className="text-2xl mb-2">⚔️</div>
+            <span className="text-white font-medium">Formación Ofensiva</span>
           </Link>
         </div>
 

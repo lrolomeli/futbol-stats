@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { CUARTOS, MINUTOS, extraerJugadoresDeFormacion, posicionEnMinuto } from '@/lib/formacion'
-import type { FormacionData } from '@/lib/formacion'
+import type { ClaveFormacion, FormacionData } from '@/lib/formacion'
 import { colorDeJugador } from '@/lib/colores'
 
 interface Jugador {
@@ -15,6 +15,8 @@ interface Jugador {
 interface Props {
   datos: FormacionData
   jugadorPorId: Map<number, Jugador>
+  clave: ClaveFormacion
+  tituloShare?: string
 }
 
 const BANCA = 'Banca'
@@ -27,7 +29,7 @@ const colorCuartos = (cuartos: number): string => {
   return 'bg-gray-700/50 text-gray-500'
 }
 
-export default function TablaRotacionCuartos({ datos, jugadorPorId }: Props) {
+export default function TablaRotacionCuartos({ datos, jugadorPorId, clave, tituloShare = '⚽ Rotación por cuartos' }: Props) {
   const [filtro, setFiltro] = useState<number | 'todos'>('todos')
 
   const jugadoresEnTabla = useMemo(() => {
@@ -43,14 +45,14 @@ export default function TablaRotacionCuartos({ datos, jugadorPorId }: Props) {
     : jugadoresEnTabla.filter(j => j.id === filtro)
 
   const posicionesPorCuarto = (jugadorId: number): string[] =>
-    MINUTOS.map(minuto => posicionEnMinuto(datos, String(minuto), jugadorId) ?? BANCA)
+    MINUTOS.map(minuto => posicionEnMinuto(datos, String(minuto), jugadorId, clave) ?? BANCA)
 
   const cuartosJugados = (jugadorId: number): number =>
-    MINUTOS.filter(minuto => posicionEnMinuto(datos, String(minuto), jugadorId) !== null).length
+    MINUTOS.filter(minuto => posicionEnMinuto(datos, String(minuto), jugadorId, clave) !== null).length
 
   const compartirWhatsApp = () => {
     const lineas: string[] = []
-    if (filtro === 'todos') lineas.push('⚽ Rotación por cuartos')
+    if (filtro === 'todos') lineas.push(tituloShare)
     for (const jugador of filaVisible) {
       const posiciones = posicionesPorCuarto(jugador.id).join(' | ')
       lineas.push(`${jugador.nombre} (#${jugador.numero}): ${posiciones}`)

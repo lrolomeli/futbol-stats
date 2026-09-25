@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { io, type Socket } from 'socket.io-client'
-import { extraerJugadoresPorMinuto, FORMACION_VACIA, MINUTOS } from '@/lib/formacion'
+import { CLAVE_DEFENSIVA, extraerJugadoresPorMinuto, FORMACION_VACIA, MINUTOS } from '@/lib/formacion'
 import type { FormacionData } from '@/lib/formacion'
 
 interface Jugador {
@@ -96,7 +96,7 @@ export default function EvaluacionPage() {
 
     fetch('/api/formacion')
       .then(res => res.json())
-      .then(data => setFormacion(data.datos ?? FORMACION_VACIA()))
+      .then(data => setFormacion(data.datos ?? FORMACION_VACIA(CLAVE_DEFENSIVA)))
       .catch(() => setError('Error al cargar la formación'))
       .finally(() => setCargando(false))
 
@@ -135,7 +135,7 @@ export default function EvaluacionPage() {
     if (!formacion) return []
     const ids = new Set<number>()
     for (const minuto of MINUTOS) {
-      for (const id of extraerJugadoresPorMinuto(formacion, String(minuto))) {
+      for (const id of extraerJugadoresPorMinuto(formacion, String(minuto), CLAVE_DEFENSIVA)) {
         ids.add(id)
       }
     }

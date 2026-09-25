@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { FORMACION_VACIA } from '@/lib/formacion'
-import type { DatosFormacion, FormacionData } from '@/lib/formacion'
+import {
+  CLAVE_DEFENSIVA,
+  FORMACION_VACIA,
+  esClaveFormacion,
+  posicionesDe
+} from '@/lib/formacion'
+import type { ClaveFormacion, DatosFormacion, FormacionData } from '@/lib/formacion'
 
 export const dynamic = 'force-dynamic'
 
 const PIN_EDICION = '098651'
 
-export async function GET() {
-  const formacion = await prisma.formacion.findFirst()
+export async function GET(request: NextRequest) {
+  const pedida = request.nextUrl.searchParams.get('clave')
+  const clave = esClaveFormacion(pedida) ? pedida : CLAVE_DEFENSIVA
+
+  const formacion = await prisma.formacion.findUnique({ where: { clave } })
   return NextResponse.json({
-    datos: formacion ? (formacion.datos as FormacionData) : FORMACION_VACIA(),
+    clave,
+    datos: formacion ? (formacion.datos as FormacionData) : FORMACION_VACIA(clave),
     updatedAt: formacion?.updatedAt ?? null
   })
 }
@@ -21,9 +30,10 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Pincode incorrecto' }, { status: 401 })
   }
 
-  const datos: DatosFormacion = (body?.datos ?? FORMACION_VACIA()) as DatosFormacion
+  const clave = esClaveFormacion(body?.clave) ? body.clave : CLAVE_DEFENSIVA
+  const datos: DatosFormacion = (body?.datos ?? FORMACION_VACIA(clave)) as DatosFormacion
 
-  const validacion = await validarDatos(datos)
+  const validacion = await validarDatos(datos, clave)
   if (!validacion.ok) {
     return NextResponse.json({ error: validacion.error }, { status: 400 })
   }
@@ -41,33 +51,21 @@ export async function PUT(request: NextRequest) {
     }
   }
 
-  const existente = await prisma.formacion.findFirst()
-  if (existente) {
-    await prisma.formacion.update({
-      where: { id: existente.id },
-      data: { datos }
-    })
-  } else {
-    await prisma.formacion.create({ data: { datos } })
-  }
+  await prisma.formacion.upsert({
+    where: { clave },
+    create: { clave, datos },
+    update: { datos }
+  })
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, clave })
 }
 
-async function validarDatos(datos: DatosFormacion) {
+async function validarDatos(datos: DatosFormacion, clave: ClaveFormacion) {
   if (!datos || typeof datos !== 'object') {
     return { ok: false, error: 'Datos inválidos' }
   }
 
-  const posicionesPermitidas = new Set([
-    'portero',
-    'defensa_izquierdo',
-    'defensa_derecho',
-    'lateral_izquierdo',
-    'lateral_derecho',
-    'centrocampista',
-    'delantero'
-  ])
+  const posicionesPermitidas = new Set<string>(posicionesDe(clave).map(p => p.key))
   const minutosPermitidos = new Set(['0', '10', '20', '30'])
 
   const usadosPorMinuto: Record<string, Set<number>> = {}

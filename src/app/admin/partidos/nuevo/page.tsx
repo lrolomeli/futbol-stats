@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
-import { extraerJugadoresDeFormacion, FORMACION_VACIA } from '@/lib/formacion'
+import { CLAVE_DEFENSIVA, extraerJugadoresDeFormacion, FORMACION_VACIA } from '@/lib/formacion'
 import type { FormacionData } from '@/lib/formacion'
 
 interface FormacionResponse {
@@ -26,7 +26,7 @@ export default function NuevoPartidoPage() {
     fetch('/api/formacion')
       .then(res => res.json())
       .then((data: FormacionResponse) => {
-        const datos = data.datos ?? FORMACION_VACIA()
+        const datos = data.datos ?? FORMACION_VACIA(CLAVE_DEFENSIVA)
         const ids = extraerJugadoresDeFormacion(datos)
         setCantidadJugadores(ids.length)
       })
@@ -114,7 +114,7 @@ export default function NuevoPartidoPage() {
                 <p className="text-gray-400 text-sm">
                   Asigná jugadores en{' '}
                   <a href="/admin/formacion" className="text-primary-400 underline">
-                    /admin/formacion
+                    /admin/formacion (defensiva)
                   </a>{' '}
                   antes de crear un partido.
                 </p>

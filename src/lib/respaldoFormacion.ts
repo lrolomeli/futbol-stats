@@ -1,7 +1,7 @@
-import { POSICIONES, MINUTOS, FORMACION_VACIA, extraerJugadoresDeFormacion } from './formacion'
-import type { FormacionData } from './formacion'
+import { CLAVE_OFENSIVA, CLAVES_FORMACION, FORMACION_VACIA, MINUTOS, esClaveFormacion, extraerJugadoresDeFormacion, posicionesDe } from './formacion'
+import type { ClaveFormacion, FormacionData } from './formacion'
 
-export const VERSION_RESPALDO = 1
+export const VERSION_RESPALDO = 2
 
 export interface JugadorRespaldo {
   id: number
@@ -11,6 +11,7 @@ export interface JugadorRespaldo {
 
 export interface RespaldoFormacion {
   version: number
+  clave: ClaveFormacion
   generadoEn: string | null
   jugadores: JugadorRespaldo[]
   datos: FormacionData
@@ -39,8 +40,8 @@ export interface PreviewImport {
   datosResultantes: FormacionData
 }
 
-function etiquetaPosicion(key: string): string {
-  return POSICIONES.find(p => p.key === key)?.label ?? key
+function etiquetaPosicion(clave: ClaveFormacion, key: string): string {
+  return posicionesDe(clave).find(p => p.key === key)?.label ?? key
 }
 
 function normalizarNombre(nombre: string): string {
@@ -60,7 +61,8 @@ function selloFecha(): string {
 
 export function crearRespaldo(
   datos: FormacionData,
-  jugadorPorId: ReadonlyMap<number, JugadorRespaldo>
+  jugadorPorId: ReadonlyMap<number, JugadorRespaldo>,
+  clave: ClaveFormacion
 ): RespaldoFormacion {
   const jugadores: JugadorRespaldo[] = []
   for (const id of extraerJugadoresDeFormacion(datos)) {
@@ -71,6 +73,7 @@ export function crearRespaldo(
   jugadores.sort((a, b) => a.numero - b.numero)
   return {
     version: VERSION_RESPALDO,
+    clave,
     generadoEn: new Date().toISOString(),
     jugadores,
     datos
@@ -80,9 +83,10 @@ export function crearRespaldo(
 export function descargarRespaldo(
   datos: FormacionData,
   jugadorPorId: ReadonlyMap<number, JugadorRespaldo>,
-  prefijo = 'formacion'
+  clave: ClaveFormacion,
+  prefijo: string
 ): void {
-  const respaldo = crearRespaldo(datos, jugadorPorId)
+  const respaldo = crearRespaldo(datos, jugadorPorId, clave)
   const blob = new Blob([JSON.stringify(respaldo, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const enlace = document.createElement('a')
@@ -111,6 +115,12 @@ export function parsearRespaldo(texto: string): ParseoRespaldo {
   if (crudo.version > VERSION_RESPALDO) {
     return { ok: false, error: `El archivo es de una versión más nueva (v${crudo.version})` }
   }
+  if (crudo.version < 2 && !esClaveFormacion(crudo.clave)) {
+    crudo.clave = CLAVE_OFENSIVA
+  }
+  if (!esClaveFormacion(crudo.clave)) {
+    return { ok: false, error: 'El archivo no indica a qué formación pertenece' }
+  }
   if (!Array.isArray(crudo.jugadores)) {
     return { ok: false, error: 'El archivo no tiene la lista de jugadores' }
   }
@@ -124,17 +134,18 @@ export function parsearRespaldo(texto: string): ParseoRespaldo {
     }
   }
 
+  const clave = crudo.clave as ClaveFormacion
   const minutosValidos = new Set(MINUTOS.map(String))
   const usadosPorMinuto = new Map<string, Set<number>>()
 
-  for (const { key } of POSICIONES) {
+  for (const { key } of posicionesDe(clave)) {
     const celdas = crudo.datos[key]
     if (celdas == null) continue
     if (typeof celdas !== 'object' || Array.isArray(celdas)) {
-      return { ok: false, error: `Datos inválidos en la posición ${etiquetaPosicion(key)}` }
+      return { ok: false, error: `Datos inválidos en la posición ${etiquetaPosicion(clave, key)}` }
     }
     for (const minuto in celdas) {
-      const etiqueta = `${etiquetaPosicion(key)} minuto ${minuto}`
+      const etiqueta = `${etiquetaPosicion(clave, key)} minuto ${minuto}`
       if (!minutosValidos.has(minuto)) {
         return { ok: false, error: `Minuto desconocido en ${etiqueta}` }
       }
@@ -161,6 +172,7 @@ export function parsearRespaldo(texto: string): ParseoRespaldo {
     ok: true,
     respaldo: {
       version: crudo.version,
+      clave,
       generadoEn: typeof crudo.generadoEn === 'string' ? crudo.generadoEn : null,
       jugadores: crudo.jugadores,
       datos: crudo.datos
@@ -173,6 +185,8 @@ export function generarPreviewImport(
   jugadoresActivos: readonly JugadorRespaldo[],
   datosActuales: FormacionData
 ): PreviewImport {
+  const clave = respaldo.clave
+
   const porId = new Map<number, JugadorRespaldo>()
   const porNumero = new Map<number, JugadorRespaldo>()
   const porNombre = new Map<string, JugadorRespaldo>()
@@ -180,14 +194,14 @@ export function generarPreviewImport(
   for (const jugador of jugadoresActivos) {
     porId.set(jugador.id, jugador)
     if (!porNumero.has(jugador.numero)) porNumero.set(jugador.numero, jugador)
-    const clave = normalizarNombre(jugador.nombre)
-    if (!porNombre.has(clave)) porNombre.set(clave, jugador)
+    const claveNombre = normalizarNombre(jugador.nombre)
+    if (!porNombre.has(claveNombre)) porNombre.set(claveNombre, jugador)
   }
 
   const refsPorId = new Map<number, JugadorRespaldo>()
   for (const ref of respaldo.jugadores) refsPorId.set(ref.id, ref)
 
-  const datosResultantes = FORMACION_VACIA()
+  const datosResultantes = FORMACION_VACIA(clave)
   const usadosPorMinuto = new Map<string, Set<number>>()
   const faltantes: JugadorFaltante[] = []
 
@@ -196,7 +210,7 @@ export function generarPreviewImport(
   let resueltosPorNombre = 0
   let celdasConJugador = 0
 
-  for (const { key } of POSICIONES) {
+  for (const { key } of posicionesDe(clave)) {
     for (const minuto of MINUTOS) {
       const columna = String(minuto)
       const celda = respaldo.datos?.[key]?.[columna]
@@ -220,13 +234,13 @@ export function generarPreviewImport(
       }
 
       if (!encontrado || !via) {
-        faltantes.push({ posicion: etiquetaPosicion(key), minuto: columna, nombre: nombreRef, numero: numeroRef })
+        faltantes.push({ posicion: etiquetaPosicion(clave, key), minuto: columna, nombre: nombreRef, numero: numeroRef })
         continue
       }
 
       const usados = usadosPorMinuto.get(columna) ?? new Set<number>()
       if (usados.has(encontrado.id)) {
-        faltantes.push({ posicion: etiquetaPosicion(key), minuto: columna, nombre: nombreRef, numero: numeroRef })
+        faltantes.push({ posicion: etiquetaPosicion(clave, key), minuto: columna, nombre: nombreRef, numero: numeroRef })
         continue
       }
       usados.add(encontrado.id)
@@ -242,10 +256,10 @@ export function generarPreviewImport(
 
   let cambios = 0
   let celdasQueSeVacias = 0
-  for (const { key } of POSICIONES) {
+  for (const { key } of posicionesDe(clave)) {
     for (const minuto of MINUTOS) {
       const columna = String(minuto)
-      const antes = datosActuales[key][columna]
+      const antes = datosActuales[key]?.[columna] ?? []
       const despues = datosResultantes[key][columna]
       if (antes[0] !== despues[0]) cambios++
       if (antes.length > 0 && despues.length === 0) celdasQueSeVacias++
@@ -263,4 +277,11 @@ export function generarPreviewImport(
     faltantes,
     datosResultantes
   }
+}
+
+export function nombresDeClaves(): { clave: ClaveFormacion; label: string }[] {
+  return CLAVES_FORMACION.map(clave => ({
+    clave,
+    label: clave === 'defensiva' ? 'Defensiva' : 'Ofensiva'
+  }))
 }
