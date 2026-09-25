@@ -8,6 +8,9 @@ import type { ClavePosicion, FormacionData } from '@/lib/formacion'
 import { colorDeJugador } from '@/lib/colores'
 import { descargarImagenFormacion } from '@/lib/imagenFormacion'
 import type { TiempoImagen } from '@/lib/imagenFormacion'
+import { descargarRespaldo, generarPreviewImport, parsearRespaldo } from '@/lib/respaldoFormacion'
+import type { PreviewImport } from '@/lib/respaldoFormacion'
+import PreviewImportModal from '@/components/PreviewImportModal'
 import TablaRotacionCuartos from '@/components/TablaRotacionCuartos'
 
 interface Jugador {
@@ -35,6 +38,9 @@ export default function FormacionPage() {
   const [descargando, setDescargando] = useState<TiempoImagen | null>(null)
   const [pincode, setPincode] = useState<string | null>(null)
   const [pincodeAbierto, setPincodeAbierto] = useState(false)
+  const [previewImport, setPreviewImport] = useState<PreviewImport | null>(null)
+  const [importando, setImportando] = useState(false)
+  const archivoRef = useRef<HTMLInputElement | null>(null)
 
   const GUARDAR_DESPUES_MS = 600
 
@@ -117,6 +123,10 @@ export default function FormacionPage() {
     return mapa
   }, [datos])
 
+  const tieneFormacion = datos
+    ? Object.values(datos).some(celdas => Object.values(celdas).some(ids => ids.length > 0))
+    : false
+
   const programarAutoguardado = (nuevosDatos: FormacionData) => {
     if (!pincode) return
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
@@ -183,6 +193,57 @@ export default function FormacionPage() {
     const nuevosDatos = FORMACION_VACIA()
     setDatos(nuevosDatos)
     programarAutoguardado(nuevosDatos)
+  }
+
+  const exportarRespaldo = () => {
+    if (!datos) return
+    try {
+      descargarRespaldo(datos, jugadorPorId)
+      mostrarMensaje('exito', 'Copia de seguridad descargada')
+    } catch (e: any) {
+      mostrarMensaje('error', e.message || 'No se pudo generar el archivo')
+    }
+  }
+
+  const abrirSelectorArchivo = () => {
+    if (!editando) {
+      mostrarMensaje('error', 'Tocá "Editar" para importar una formación')
+      return
+    }
+    archivoRef.current?.click()
+  }
+
+  const manejarArchivo = async (evento: React.ChangeEvent<HTMLInputElement>) => {
+    const archivo = evento.target.files?.[0]
+    evento.target.value = ''
+    if (!archivo || !datos) return
+    setImportando(true)
+    try {
+      const parseo = parsearRespaldo(await archivo.text())
+      if (!parseo.ok) {
+        mostrarMensaje('error', parseo.error)
+        return
+      }
+      setPreviewImport(generarPreviewImport(parseo.respaldo, jugadores, datos))
+    } catch {
+      mostrarMensaje('error', 'No se pudo leer el archivo')
+    } finally {
+      setImportando(false)
+    }
+  }
+
+  const confirmarImportacion = () => {
+    if (!previewImport) return
+    if (!pincode) {
+      mostrarMensaje('error', 'Tocá "Editar" para importar una formación')
+      setPreviewImport(null)
+      return
+    }
+    const nuevosDatos = previewImport.datosResultantes
+    setDatos(nuevosDatos)
+    programarAutoguardado(nuevosDatos)
+    setPreviewImport(null)
+    mostrarMensaje('exito', 'Formación restaurada')
   }
 
   const posicionLabel = (key: string) =>
@@ -336,6 +397,39 @@ export default function FormacionPage() {
           )}
         </div>
 
+        <div className="bg-gray-800 p-4 rounded-xl">
+          <h3 className="text-white font-semibold text-sm mb-1">Copia de seguridad</h3>
+          <p className="text-gray-400 text-xs mb-3">
+            Descargá la alineación a un archivo JSON para poder restaurarla más adelante si la cambiás.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={exportarRespaldo}
+              disabled={!tieneFormacion}
+              className="flex-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
+            >
+              ⬇ Exportar JSON
+            </button>
+            <button
+              onClick={abrirSelectorArchivo}
+              disabled={importando}
+              className="flex-1 bg-primary-600 hover:bg-primary-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
+            >
+              {importando ? 'Leyendo...' : '⬆ Importar JSON'}
+            </button>
+          </div>
+          <input
+            ref={archivoRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={manejarArchivo}
+          />
+          {!editando && (
+            <p className="text-gray-400 text-[10px] mt-2">🔒 Tocá "Editar" para importar una formación.</p>
+          )}
+        </div>
+
         <TablaRotacionCuartos datos={datos} jugadorPorId={jugadorPorId} />
       </div>
 
@@ -358,6 +452,14 @@ export default function FormacionPage() {
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 shadow-lg pointer-events-none">
           <p className="text-white text-sm font-semibold">{toast}</p>
         </div>
+      )}
+
+      {previewImport && (
+        <PreviewImportModal
+          preview={previewImport}
+          onConfirmar={confirmarImportacion}
+          onCancelar={() => setPreviewImport(null)}
+        />
       )}
 
       {pincodeAbierto && (

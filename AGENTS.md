@@ -45,7 +45,6 @@ sudo service redis-server start
 ## Arquitectura
 
 - Rutas: App Router bajo `src/app/`. Paginas client en `page.tsx` con `'use client'`, APIs como `route.ts` (handlers `GET`/`POST`/`PUT`).
-- Base de datos: singleton Prisma en `src/lib/db.ts`.
 - Evaluacion compartida por partido (`/evaluacion/[partidoId]`, sin tokens ni roles operador/juez): todos los que abren el link ven/editan las mismas stats en tiempo real via websocket.
 - Pincode de administrador hardcodeado `098651` (en `PincodeModal`, APIs `formacion` y `reset`).
 
@@ -55,8 +54,13 @@ sudo service redis-server start
   - **Un jugador por celda** (refuerzo tambien en la API `PUT /api/formacion`).
   - Un jugador no puede repetirse dentro del mismo minuto.
   - **Autosave**: cada cambio se guarda solo (debounce ~600ms) via `PUT /api/formacion`. No hay boton de guardado.
-  - El pincode se pide una sola vez y se conserva en `localStorage` (`formacion_pincode`) para reutilizarlo en el autosave.
+  - El pincode se pide una sola vez y se conserva en `sessionStorage` (`formacion_pincode`) para reutilizarlo en el autosave. Ojo: la sesión (no el navegador), así que al reabrir la pestaña hay que pedirlo de nuevo.
   - Columnas y tiempos: `Min 0` = alineacion inicial 1er tiempo, `Min 10` = cambios 1er tiempo, `Min 20` = inicial 2do tiempo, `Min 30` = cambios 2do tiempo.
 - **Imagen de formacion**: `src/lib/imagenFormacion.ts` replica (en canvas, cliente) el script Python `futform/futform.py`. Carga la plantilla `/plantilla.jpg` (copia servida desde `public/`), dibuja nombres centrados en cajas fijas y descarga un JPEG por tiempo (botones en `/admin/formacion`).
+- **Copia de seguridad de la formacion** (bloque "Copia de seguridad" en `/admin/formacion`): todo en `src/lib/respaldoFormacion.ts`, sin endpoints nuevos.
+  - Exportar = `descargarRespaldo`: baja un JSON `{ version, generadoEn, jugadores: [{id,numero,nombre}], datos }` con `datos` igual al blob de `Formacion.datos` y nombre `formacion-YYYY-MM-DD_HHmm.json`. Solo incluye los jugadores en uso.
+  - Importar = `parsearRespaldo` (valida version, posiciones, minutos, 1 por celda y unicidad por minuto) + `generarPreviewImport` (resuelve cada jugador por cascada **id → numero → nombre** (nombre normalizado con NFD, sin tildes) y calcula el diff) → `PreviewImportModal` **reemplaza toda la formación** previa confirmación.
+  - El import reusa el `PUT /api/formacion` (el mismo autosave de 600ms), no hay logica de persistencia nueva. Requiere `editando` (pincode) para importar; exportar siempre esta disponible.
+  - Los jugadores no resolubles y las colisiones que surjan al resolver quedan como `faltantes` en el preview en vez de romper el PUT con un 400.
 - **Evaluacion** (`/evaluacion/[partidoId]`): vista unica compartida por partido (sin tokens ni roles). Los cambios de stats se guardan via `PUT /api/partidos/[id]/stats` y se emiten por Socket.io al room `partido:{id}` (`src/lib/socket.ts`); los clientes aplican el valor devuelto/recibido (no suman). El boton "Cambiar jugador" usa `POST /api/partidos/[id]/cambiar`. "Finalizar evaluacion" (solo 4to cuarto) cierra la ventana sin tocar la base de datos.
 - Reset global y creacion de partidos: acciones protegidas por el mismo pincode.
