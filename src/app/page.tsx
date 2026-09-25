@@ -24,9 +24,19 @@ export default function Home() {
           Ver Estadísticas Históricas
         </Link>
 
+        <Link
+          href="/mi-formacion"
+          className="block w-full bg-gray-800 hover:bg-gray-700 text-white font-semibold py-4 px-6 rounded-xl text-center transition-colors active:scale-95"
+        >
+          Armar mi alineación
+        </Link>
+
         <div className="text-center pt-6">
           <p className="text-gray-500 text-sm">
             Los jueces acceden directamente con el link del partido
+          </p>
+          <p className="text-gray-500 text-sm mt-1">
+            "Armar mi alineación" se guarda solo en tu navegador
           </p>
         </div>
 

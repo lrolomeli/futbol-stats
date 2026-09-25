@@ -63,3 +63,17 @@ export function extraerJugadoresPorMinuto(datos: FormacionData, minuto: string):
   }
   return ids
 }
+
+export function idsPorMinuto(datos: FormacionData): Map<string, Set<number>> {
+  const mapa = new Map<string, Set<number>>()
+  for (const minuto of MINUTOS) {
+    const ids = new Set<number>()
+    for (const { key } of POSICIONES) {
+      for (const id of datos[key]?.[String(minuto)] ?? []) {
+        ids.add(id)
+      }
+    }
+    mapa.set(String(minuto), ids)
+  }
+  return mapa
+}
