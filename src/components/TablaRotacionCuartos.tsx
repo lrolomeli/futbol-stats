@@ -19,6 +19,14 @@ interface Props {
 
 const BANCA = 'Banca'
 
+const colorCuartos = (cuartos: number): string => {
+  if (cuartos >= CUARTOS.length) return 'bg-green-600/25 text-green-300'
+  if (cuartos === 3) return 'bg-green-600/10 text-green-500'
+  if (cuartos === 2) return 'bg-yellow-500/15 text-yellow-400'
+  if (cuartos === 1) return 'bg-orange-500/15 text-orange-400'
+  return 'bg-gray-700/50 text-gray-500'
+}
+
 export default function TablaRotacionCuartos({ datos, jugadorPorId }: Props) {
   const [filtro, setFiltro] = useState<number | 'todos'>('todos')
 
@@ -36,6 +44,9 @@ export default function TablaRotacionCuartos({ datos, jugadorPorId }: Props) {
 
   const posicionesPorCuarto = (jugadorId: number): string[] =>
     MINUTOS.map(minuto => posicionEnMinuto(datos, String(minuto), jugadorId) ?? BANCA)
+
+  const cuartosJugados = (jugadorId: number): number =>
+    MINUTOS.filter(minuto => posicionEnMinuto(datos, String(minuto), jugadorId) !== null).length
 
   const compartirWhatsApp = () => {
     const lineas: string[] = []
@@ -83,6 +94,9 @@ export default function TablaRotacionCuartos({ datos, jugadorPorId }: Props) {
                 {CUARTOS.map(c => (
                   <th key={c} className="py-2 px-1 text-center font-semibold text-xs">{c}</th>
                 ))}
+                <th className="py-2 pl-1 text-center font-semibold text-xs" title="Cuántos cuartos juega">
+                  Cuartos
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -99,6 +113,13 @@ export default function TablaRotacionCuartos({ datos, jugadorPorId }: Props) {
                       </span>
                     </td>
                   ))}
+                  <td className="py-2 pl-1 text-center">
+                    <span
+                      className={`inline-block min-w-[22px] rounded px-1 py-0.5 text-xs font-bold ${colorCuartos(cuartosJugados(jugador.id))}`}
+                    >
+                      {cuartosJugados(jugador.id)}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
