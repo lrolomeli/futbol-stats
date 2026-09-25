@@ -10,6 +10,8 @@ export const POSICIONES = [
 
 export const MINUTOS = [0, 10, 20, 30] as const
 
+export const CUARTOS = ['1er Cuarto', '2do Cuarto', '3er Cuarto', '4to Cuarto'] as const
+
 export type ClavePosicion = (typeof POSICIONES)[number]['key']
 
 export type FormacionData = Record<ClavePosicion, Record<string, number[]>>
@@ -37,6 +39,17 @@ export function extraerJugadoresDeFormacion(datos: FormacionData): number[] {
     }
   }
   return [...ids]
+}
+
+export function posicionEnMinuto(
+  datos: FormacionData,
+  minuto: string,
+  jugadorId: number
+): string | null {
+  for (const { key, label } of POSICIONES) {
+    if (datos[key]?.[minuto]?.includes(jugadorId)) return label
+  }
+  return null
 }
 
 export function extraerJugadoresPorMinuto(datos: FormacionData, minuto: string): number[] {

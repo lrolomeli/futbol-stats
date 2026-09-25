@@ -8,6 +8,7 @@ import type { ClavePosicion, FormacionData } from '@/lib/formacion'
 import { colorDeJugador } from '@/lib/colores'
 import { descargarImagenFormacion } from '@/lib/imagenFormacion'
 import type { TiempoImagen } from '@/lib/imagenFormacion'
+import TablaRotacionCuartos from '@/components/TablaRotacionCuartos'
 
 interface Jugador {
   id: number
@@ -334,6 +335,8 @@ export default function FormacionPage() {
             </>
           )}
         </div>
+
+        <TablaRotacionCuartos datos={datos} jugadorPorId={jugadorPorId} />
       </div>
 
       {celdaAbierta && (
